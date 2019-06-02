@@ -6,9 +6,24 @@ feature-img: "assets/img/pexels/circuit.webp"
 tags: [About, Archive]
 ---
 
-Type on Strap is based on Type Theme, a free and open-source theme for [Jekyll](http://jekyllrb.com/), licensed under the MIT License.
+# About kaleid-liner
 
-Head over to the [theme's documentation](https://github.io/sylhare/Type-on-Strap) for much more information about Type on Strap or to install this theme on your own Jekyll site.
+CS undergraduate of USTC. Write post mainly in English (though not proficient enough). Perhaps will blog in Chinese when I'm not int the mood.
 
-This file is an example of a page in Jekyll, that automatically shows up in the header navigation, you can delete or modify this file freely.
- 
+Programming languages: (utilization rate in descending order)
+
+- C/C++ (also my introductory language)
+- C# (feel good when writing C#)
+- Python
+- Verilog (perhaps will never write it again after 2019-05-31)
+- Rust, Java, javascript, HTML
+- matlab, Fortran
+
+Frameworks:
+
+- .NET (including Core/Framework, ASP.NET)
+- Django
+- ...
+
+Blog principally about CS. Sometimes may write blogs on Galgame. 
+
