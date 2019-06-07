@@ -22,6 +22,8 @@
           <div class="excerpt">
               {{ post.excerpt | strip_html | escape }}
           </div>
+          {% capture tag_list %}{{ post.tags | join: "|"}}{% endcapture %}
+          {% include post_tags_list.html tags=tag_list %}
       </span>
     </div>
     {% endfor %}

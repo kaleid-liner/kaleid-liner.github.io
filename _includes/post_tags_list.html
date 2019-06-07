@@ -1,0 +1,13 @@
+{% assign tags = include.tags | split:'|' | sort | uniq %}
+
+{% if tags.size > 0 %}
+  <div class="post-tag-list">
+    {% for tag in tags %}
+    <a class="button" href="{{ "/tags" | relative_url }}#{{ tag | cgi_escape }}">
+      <p><i class="fa fa-tag fa-fw"></i> {{ tag }}</p>
+    </a>
+    {% endfor %}
+  </div>
+{% else %}
+  <div class="post-tag-list"></div>
+{% endif %}

@@ -18,6 +18,12 @@
     }
 }
 
+.post-tag-list {
+    @extend .tag-list;
+    padding-top: $padding-x-small;
+    padding-bottom: 0;
+}
+
 .tag-anchor {
     margin-bottom: $padding-x-small;
     a {
