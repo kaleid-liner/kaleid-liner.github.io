@@ -18,6 +18,9 @@
 
 %padding-medium {
     padding: $padding-medium $padding-large;
+    @media (min-width: 1001px) {
+        padding: $padding-large / 2 $padding-large
+    }
     @media (max-width: 1000px) {
         padding: $padding-medium * 1.5 $padding-large / 1.6;
     }
