@@ -27,3 +27,5 @@ Frameworks:
 
 Blog principally about CS. Sometimes may write blogs on Galgame. 
 
+Want to learn more about me? Click [here](<https://kaleid-liner.github.io/about/more>).
+
