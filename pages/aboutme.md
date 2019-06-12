@@ -24,7 +24,7 @@ Email: [noob@mail.ustc.edu.cn](mailto:noob@mail.ustc.edu.cn)
 ### Skills and interests
 
 - Proficient programming skill.
-
+- Have interests in reverse engineering. Recently learning on this.
 - Have interests and great experience in parallel programming and science computing. I have used OpenMP, MPI, CUDA and Intel MKL.
 - Have interests in operating systems and databases.
 - Web development.
