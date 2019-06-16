@@ -84,6 +84,13 @@ theme_settings:
 paginate: 5
 paginate_path: "blog/page:num"
 
+# AUTHORS
+authors:
+  kaleid-liner:
+    name: kaleid-liner
+    avatar: "assets/img/avatar.jpg"
+    url: "https://github.com/kaleid-liner"
+
 # PORTFOLIO
 collections:
   portfolio:
