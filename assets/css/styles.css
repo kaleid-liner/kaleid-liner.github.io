@@ -179,33 +179,42 @@ body {
     }
 }
 
-.post-content {
+.post-content,
+.post-nav {
     padding: 2% 3%;
     font-size: 1.2em;
 }
 
 @media (min-width: 576px) {
-    .post-content {
+    .post-content,
+    .post-nav {
         padding: 2% 5%;
     }
 }
 
 @media (min-width: 768px) {
-    .post-content {
+    .post-content,
+    .post-nav {
         padding: 2% 8%;
     }
 }
 
 @media (min-width: 992px) {
-    .post-content {
+    .post-content,
+    .post-nav {
         padding: 2% 15%; 
     }
 }
 
 @media (min-width: 1200px) {
-    .post-content {
+    .post-content,
+    .post-nav {
         padding: 2% 22%
     }
+}
+
+.post-nav p {
+    margin-bottom: .5rem;
 }
 
 article header {

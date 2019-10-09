@@ -17,4 +17,24 @@ layout: default
     <section id="content" class="post-content">
         {{ content }}
     </section>
+
+    <section id="pageNav" class="post-nav">
+        <div class="d-flex justify-content-between flex-wrap">
+            {% if page.previous %}
+            <div>
+                <p>Previus post:</p>
+                <p><a href="{{ page.previous.url }}">{{ page.previous.title }}</a></p>
+            </div>
+            {% endif %}
+
+            {% if page.next %}
+            <div>
+                <p>Next post:</p>
+                <p><a href="{{ page.next.url }}">{{ page.next.title }}</a></p>
+            </div>
+            {% endif %}
+        </div>
+    </section>
+
+
 </article>
