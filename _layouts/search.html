@@ -1,0 +1,23 @@
+---
+layout: page
+---
+
+<div class="container mt-4 mb-4" id="searchContainer">
+    <input type="text" class="search-input form-control" id="searchInput" placeholder="Search the posts...">
+</div>
+
+<ul id="resultsContainer">
+
+</ul>
+
+<script src="{{ '/assets/js/lib/simple-jekyll-search.min.js' | relative_url }}"></script>
+
+<script>
+    SimpleJekyllSearch({
+        searchInput: document.getElementById('searchInput'),
+        resultsContainer: document.getElementById('resultsContainer'),
+        json: '/search.json',
+        searchResultTemplate: '<li><a href="{{ site.url }}{url}">{title}</a></li>',
+        noResultsText: 'No results found',
+    })
+</script>
