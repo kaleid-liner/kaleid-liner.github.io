@@ -3,6 +3,7 @@ layout: post
 title: Hello World
 tags: [hello-world, lorem-ipsum]
 excerpt_separator: <!--more-->
+thumbnail: assets/img/thumbnails/hello_world.png
 ---
 Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Nulla facilisi morbi tempus iaculis urna. Nulla facilisi etiam dignissim diam quis enim. Viverra vitae congue eu consequat ac felis donec et. Ornare arcu dui vivamus arcu felis bibendum. Neque convallis a cras semper. Et tortor consequat id porta. Cras tincidunt lobortis feugiat vivamus at augue eget arcu dictum. 
 <!--more-->
