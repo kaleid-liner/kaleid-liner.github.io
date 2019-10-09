@@ -1,0 +1,45 @@
+---
+# Feel free to add content and custom Front Matter to this file.
+# To modify the layout, see https://jekyllrb.com/docs/themes/#overriding-theme-defaults
+
+layout: home
+---
+
+<div class="container-fluid mt-5">
+    <div class="row">
+        <div class="col-md">
+            <div class="card feature-card">
+                <img src="{{ '/assets/img/blog.jpg' | relative_url }}" class="card-img-top" alt="blog">
+                <div class="card-body">
+                    <h5 class="card-title">Blog</h5>
+                    <p class="card-text">I'm not a very proficient blogger.
+                        But you may find some of the posts helpful or interesting.
+                        Blog mainly in English about geek things.</p>
+                    <a href="{{ '/blog' | relative_url }}" class="btn btn-primary"><i class="fas fa-book-reader"></i> Read</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md">
+            <div class="card feature-card">
+                <img src="{{ '/assets/img/portfolio.jpg' | relative_url }}" class="card-img-top" alt="portfolio">
+                <div class="card-body">
+                    <h5 class="card-title">Portfolio</h5>
+                    <p class="card-text">Projects I am working on. Some of them are really exciting. (in course of construction...)</p>
+                    <a href="{{ '/portfolio' | relative_url }}" class="btn btn-primary"><i class="fas fa-folder-open"></i> Open</a>
+                </div>
+            </div>
+        </div>
+        <div class="col-md">
+            <div class="card feature-card">
+                <img src="{{ '/assets/img/cv.png' | relative_url }}" class="card-img-top" alt="cv">
+                <div class="card-body">
+                    <h5 class="card-title">Curriculum Vitae</h5>
+                    <p class="card-text">Information about me the formal way.
+                        (It's things about Jianyu Wei instead of kaleid-liner)
+                    </p>
+                    <a href="{{ '/about/more' | relative_url }}" class="btn btn-primary"><i class="fas fa-eye"></i> View</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>

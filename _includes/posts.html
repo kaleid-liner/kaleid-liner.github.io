@@ -1,0 +1,22 @@
+<div class="container">
+    <div class="col">
+        {% for post in paginator.posts %}
+        <div class="row post-teaser">
+            <div class="card border-light">
+                {% if post.thumbnail %}
+                <div class="post-thumbnail">
+                    <img class="card-img-top" alt="thumbnail" src="{{ post.thumbnail | relative_url }}">
+                </div>
+                {% endif %}
+                <div class="card-body">
+                    <h3 class="card-title"><a href="{{ post.url }}" class="text-reset">{{ post.title }}</a></h5>
+                    <p class="card-text">{{ post.excerpt | strip_html }}</p>
+                </div>
+                <div class="card-footer text-muted">
+                    {% include post_info.html post=post %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>

@@ -1,0 +1,19 @@
+---
+layout: default
+---
+
+<article>
+    <header>
+        <div {% if page.feature_image %}class="page-hero_small" 
+            style="background-image: url('{{ page.feature_image | relative_url }}');"{% endif %}>
+            <h1 class="post-title">{{ page.title }}</h1>
+            {% if page.subtitle %}
+            <h2 class="post-subtitle">{{ page.subtitle }}</h2>
+            {% endif %}
+        </div>
+    </header>
+
+    <section id="content" class="post-content">
+        {{ content }}
+    </section>
+</article>
