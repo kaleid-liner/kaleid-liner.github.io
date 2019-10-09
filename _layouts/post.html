@@ -19,16 +19,16 @@ layout: default
     </section>
 
     <section id="pageNav" class="post-nav">
-        <div class="d-flex justify-content-between flex-wrap">
+        <div class="d-flex flex-column flex-md-row">
             {% if page.previous %}
             <div>
-                <p>Previus post:</p>
+                <p>Previous post:</p>
                 <p><a href="{{ page.previous.url }}">{{ page.previous.title }}</a></p>
             </div>
             {% endif %}
 
             {% if page.next %}
-            <div>
+            <div class="ml-auto">
                 <p>Next post:</p>
                 <p><a href="{{ page.next.url }}">{{ page.next.title }}</a></p>
             </div>
