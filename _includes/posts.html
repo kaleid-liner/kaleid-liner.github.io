@@ -9,7 +9,7 @@
                 </div>
                 {% endif %}
                 <div class="card-body">
-                    <h3 class="card-title"><a href="{{ post.url }}" class="text-reset">{{ post.title }}</a></h5>
+                    <h3 class="card-title"><a href="{{ post.url | relative_url }}" class="text-reset">{{ post.title }}</a></h5>
                     {% if post.subtitle %}
                     <h4 class="card-subtitle">{{ post.subtitle }}</h4>
                     {% endif %}

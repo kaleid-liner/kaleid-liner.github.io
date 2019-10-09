@@ -199,4 +199,4 @@ When I was thinking on whether to implement a hashmap myself or using C++, I fou
 
 Load test on my dual core Ubuntu Virtual Machine:
 
-![server_load_test](/assets/img/posts/server_load_test.png)
+![server_load_test]({{ '/assets/img/posts/server_load_test.png' | relative_url }})

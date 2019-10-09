@@ -14,7 +14,7 @@ layout: page
     SimpleJekyllSearch({
         searchInput: document.getElementById('searchInput'),
         resultsContainer: document.getElementById('resultsContainer'),
-        json: '/search.json',
+        json: "{{ '/search.json' | relative_url }}",
         searchResultTemplate: '<li><h3><a href="{url}">{title}</a></h3><div class="d-flex text-muted"><p><i class="fas fa-calendar-alt"></i> {date}&nbsp;&nbsp;<i class="fas fa-clock"></i> {read_time} read</p>'
             + '<p class="ml-auto"><i class="fas fa-tag"></i> {tags}</p></div><p>{excerpt}</p></li>',
         noResultsText: 'No results found',
