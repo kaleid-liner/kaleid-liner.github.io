@@ -25,6 +25,10 @@
     padding: 10px;
 }
 
+.site-footer .nav-link {
+    padding: .5rem .3rem
+}
+
 .page-hero,
 .page-hero_small {
     background-size: cover;
