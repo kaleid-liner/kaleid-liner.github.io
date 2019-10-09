@@ -395,3 +395,39 @@ img {
 #resultsContainer li p {
     display: block;
 }
+
+#indexCarousel {
+    width: 100%;
+}
+
+#indexCarousel img {
+    object-fit: cover;
+    height: 500px;
+    width: 100%;
+}
+
+hr {
+    border: 0;
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+    border-bottom: 1px solid #fff;
+    margin:1em 0
+}
+
+.carousel-caption-top {
+    top: 20%;
+    bottom: auto;
+}
+
+@media (max-width: 767.98px) {
+    .carousel-caption-top {
+        top: 10%;
+    }
+
+    #indexCarousel {
+        font-size: .5em;
+    }
+
+    #indexCarousel img {
+        height: 300px;
+    }
+}

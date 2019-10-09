@@ -1,0 +1,41 @@
+<div id="indexCarousel" class="carousel slide" data-ride="carousel">
+    <ol class="carousel-indicators">
+        <li data-target="#indexCarousel" data-slide-to="0" class="active"></li>
+        <li data-target="#indexCarousel" data-slide-to="1"></li>
+        <li data-target="#indexCarousel" data-slide-to="2"></li>
+    </ol>
+    <div class="carousel-inner">
+        <div class="carousel-caption carousel-caption-top">
+            <h1>Explore the website quickly.</h1>
+        </div>
+        <div class="carousel-item active">
+            <a href="{{ '/search/' | relative_url }}"><img src="{{ '/assets/img/features/open_book.jpg' | relative_url }}" alt="page-feature"></a>
+            <div class="carousel-caption d-none d-md-block">
+                <h3>Search</h3>
+                <p>What are you looking for?</p>
+            </div>
+        </div>
+        <div class="carousel-item">
+            <a href="{{ '/blog/2019/06/02/epoll-web-server.html' | relative_url }}"><img src="{{ '/assets/img/features/computer.jpeg' | relative_url }}" alt="post-feature"></a>
+            <div class="carousel-caption d-none d-md-block">
+                <h3>Concurrent HTTP Server with Epoll</h3>
+                <p>A Simple yet high performance HTTP server implemented with epoll and pure C.</p>
+            </div>
+        </div>
+        <div class="carousel-item">
+            <a href="{{ '/about/more' | relative_url }}"><img src="{{ '/assets/img/features/writing_coffee_mac.jpg' | relative_url }}" class="d-block w-100" alt="post-feature"></a>
+            <div class="carousel-caption d-none d-md-block">
+                <h3>Curriculum Vitae</h3>
+                <p>Know something about Jianyu Wei.</p>
+            </div>
+        </div>
+    </div>
+    <a class="carousel-control-prev" href="#indexCarousel" role="button" data-slide="prev">
+        <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+        <span class="sr-only">Previous</span>
+    </a>
+    <a class="carousel-control-next" href="#indexCarousel" role="button" data-slide="next">
+        <span class="carousel-control-next-icon" aria-hidden="true"></span>
+        <span class="sr-only">Next</span>
+    </a>
+</div>
