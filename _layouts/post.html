@@ -23,14 +23,14 @@ layout: default
             {% if page.previous %}
             <div>
                 <p>Previous post:</p>
-                <p><a href="{{ page.previous.url }}">{{ page.previous.title }}</a></p>
+                <p><a href="{{ page.previous.url | relative_url }}">{{ page.previous.title }}</a></p>
             </div>
             {% endif %}
 
             {% if page.next %}
             <div class="ml-auto">
                 <p>Next post:</p>
-                <p><a href="{{ page.next.url }}">{{ page.next.title }}</a></p>
+                <p><a href="{{ page.next.url | relative_url }}">{{ page.next.title }}</a></p>
             </div>
             {% endif %}
         </div>
