@@ -2,9 +2,7 @@
 layout: page
 ---
 
-<div class="container mt-4 mb-4" id="searchContainer">
-    <input type="text" class="search-input form-control" id="searchInput" placeholder="Search the posts...">
-</div>
+<input type="text" class="search-input form-control" id="searchInput" placeholder="Search the posts...">
 
 <ul id="resultsContainer">
 
@@ -17,7 +15,8 @@ layout: page
         searchInput: document.getElementById('searchInput'),
         resultsContainer: document.getElementById('resultsContainer'),
         json: '/search.json',
-        searchResultTemplate: '<li><a href="{{ site.url }}{url}">{title}</a></li>',
+        searchResultTemplate: '<li><h3><a href="{url}">{title}</a></h3><div class="d-flex text-muted"><p><i class="fas fa-calendar-alt"></i> {date}&nbsp;&nbsp;<i class="fas fa-clock"></i> {read_time} read</p>'
+            + '<p class="ml-auto"><i class="fas fa-tag"></i> {tags}</p></div><p>{excerpt}</p></li>',
         noResultsText: 'No results found',
     })
 </script>

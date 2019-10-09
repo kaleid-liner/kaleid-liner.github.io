@@ -10,10 +10,20 @@
                 {% endif %}
                 <div class="card-body">
                     <h3 class="card-title"><a href="{{ post.url }}" class="text-reset">{{ post.title }}</a></h5>
-                    <p class="card-text">{{ post.excerpt | strip_html }}</p>
+                    {% if post.subtitle %}
+                    <h4 class="card-subtitle">{{ post.subtitle }}</h4>
+                    {% endif %}
+                    {% include post_info.html post=post %}
+                    <p class="card-text mt-2">{{ post.excerpt | strip_html }}</p>
                 </div>
                 <div class="card-footer text-muted">
-                    {% include post_info.html post=post %}
+                    <ul class="list-inline">
+                    {% for tag in post.tags %}
+                    <li class="list-inline-item">
+                        <i class="fas fa-tag"></i> {{ tag | upcase }}
+                    </li>
+                    {% endfor %}
+                    </ul>
                 </div>
             </div>
         </div>

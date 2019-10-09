@@ -136,6 +136,10 @@
     }
 }
 
+.post-teaser .list-inline {
+    margin-bottom: 0;
+}
+
 .header-lead {
     font-size: 1.3em;
     color: #fff;
@@ -366,5 +370,19 @@ img {
 
 .search-input {
     font-size: 1.2rem;
+    margin: 2rem 0;
 }
 
+#resultsContainer {
+    list-style: none;
+    margin-left: 0;
+    padding-left: 0;
+}
+
+#resultsContainer li {
+    margin-bottom: 3rem;
+}
+
+#resultsContainer li p {
+    display: block;
+}
