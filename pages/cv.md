@@ -1,7 +1,7 @@
 ---
 layout: page
 title: About Jianyu Wei
-permalink: "about/more"
+permalink: "about/more/"
 hide: true
 ---
 
