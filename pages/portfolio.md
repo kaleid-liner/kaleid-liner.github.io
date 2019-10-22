@@ -1,5 +1,5 @@
 ---
-layout: page
+layout: portfolio
 permalink: /portfolio/
 title: Portfolio
 subtitle: Projects I am working on.
