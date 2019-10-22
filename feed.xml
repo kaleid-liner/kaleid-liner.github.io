@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.0.0">Jekyll</generator><link href="https://kaleid-liner.github.io/feed.xml" rel="self" type="application/atom+xml" /><link href="https://kaleid-liner.github.io/" rel="alternate" type="text/html" /><updated>2019-10-22T14:58:12+00:00</updated><id>https://kaleid-liner.github.io/feed.xml</id><title type="html">KLBlog</title><subtitle>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.</subtitle><entry><title type="html">Concurrent HTTP Server with Epoll</title><link href="https://kaleid-liner.github.io/blog/2019/06/02/epoll-web-server.html" rel="alternate" type="text/html" title="Concurrent HTTP Server with Epoll" /><published>2019-06-02T00:00:00+00:00</published><updated>2019-06-02T00:00:00+00:00</updated><id>https://kaleid-liner.github.io/blog/2019/06/02/epoll-web-server</id><content type="html" xml:base="https://kaleid-liner.github.io/blog/2019/06/02/epoll-web-server.html">&lt;p&gt;Several days ago, my Operating System class assigned a lab, &lt;a href=&quot;https://github.com/OSH-2019/OSH-2019.github.io/tree/master/3&quot;&gt;to write a concurrent http server&lt;/a&gt;. I finally decide to complete this lab in C and using &lt;a href=&quot;http://man7.org/linux/man-pages/man7/epoll.7.html&quot;&gt;&lt;strong&gt;epoll&lt;/strong&gt;&lt;/a&gt; to implement I/O multiplexing. It turns out that epoll is really hard to use, especially in multithreaded environments. So I write this post to document some pitfalls while using epoll. The source code of the HTTP Server can be found at &lt;a href=&quot;https://github.com/kaleid-liner/epoll-web-server&quot;&gt;here&lt;/a&gt;. &lt;!--more--&gt;&lt;/p&gt;
+
+&lt;p&gt;The epoll API monitors multiple file descriptors to see if I/O is possible on any of them. To understand epoll, I recommend &lt;a href=&quot;https://medium.com/@copyconstruct/the-method-to-epolls-madness-d9d2d6378642&quot;&gt;this post&lt;/a&gt;, a well-written article that explains low-level details of epoll thoroughly and differentiates between level-triggered and edge-triggered mode.&lt;/p&gt;
+
+&lt;h2 id=&quot;use-thread-pool&quot;&gt;Use thread pool&lt;/h2&gt;
+
+&lt;p&gt;Before taking epoll into consideration, to improve performance and throughput of your web server, you have to utilize your multicore processor. Using &lt;code class=&quot;highlighter-rouge&quot;&gt;fork&lt;/code&gt; requires little work. But it’s better to use Posix Thread. And as creating a thread every time a request comes is not negligible, creating a thread pool while initializing the server is a sensible choice.&lt;/p&gt;
+
+&lt;div class=&quot;language-c highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;THREAD_NUM&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;++&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;i&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;pthread_create&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;o&quot;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;threads&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;i&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;],&lt;/span&gt; &lt;span class=&quot;nb&quot;&gt;NULL&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;kr&quot;&gt;thread&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;targs&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;fprintf&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;stderr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;error while creating %d thread&lt;/span&gt;&lt;span class=&quot;se&quot;&gt;\n&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;i&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;exit&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Where &lt;code class=&quot;highlighter-rouge&quot;&gt;thread&lt;/code&gt; is defined as &lt;code class=&quot;highlighter-rouge&quot;&gt;void *thread(void *args)&lt;/code&gt;.  I will write on it later on.&lt;/p&gt;
+
+&lt;p&gt;But remember, just using thread pool perhaps won’t mean a lot to your concurrency. Because as long as your thread num is set to a reasonable range, I mean, 2-3 times your processor num, if any task stucks in the thread, the thread poll will run out quickly.&lt;/p&gt;
+
+&lt;h2 id=&quot;steps-my-server-will-go-through&quot;&gt;Steps my server will go through&lt;/h2&gt;
+
+&lt;p&gt;Before introducing how to use epoll, I will first give an overview of steps my server will take after planting epoll into it. It may help you to grasp the structure of my code.&lt;/p&gt;
+
+&lt;ol&gt;
+  &lt;li&gt;
+    &lt;p&gt;The main thread finish initializing work (e.g., configing network, listening on socket).&lt;/p&gt;
+  &lt;/li&gt;
+  &lt;li&gt;
+    &lt;p&gt;The main thread creates an epoll instance and adds the listen file descriptor to the interest list of the epoll instance (&lt;strong&gt;Edge Triggered&lt;/strong&gt;).&lt;/p&gt;
+  &lt;/li&gt;
+  &lt;li&gt;
+    &lt;p&gt;The main thread creates &lt;code class=&quot;highlighter-rouge&quot;&gt;THREAD_NUM&lt;/code&gt; threads (&lt;code class=&quot;highlighter-rouge&quot;&gt;epollfd&lt;/code&gt; and &lt;code class=&quot;highlighter-rouge&quot;&gt;listenfd&lt;/code&gt; will be passed as arguments). Then both the main thread and the child threads will serve as workers.&lt;/p&gt;
+  &lt;/li&gt;
+  &lt;li&gt;
+    &lt;p&gt;From now on is what &lt;code class=&quot;highlighter-rouge&quot;&gt;void *thread(void *args)&lt;/code&gt; is responsible. All the workers call &lt;code class=&quot;highlighter-rouge&quot;&gt;epoll_wait&lt;/code&gt; on the epoll instance.&lt;/p&gt;
+  &lt;/li&gt;
+  &lt;li&gt;
+    &lt;p&gt;When any event is caught, the worker thread that gets it will do:&lt;/p&gt;
+
+    &lt;ol&gt;
+      &lt;li&gt;
+        &lt;p&gt;Check if it’s &lt;code class=&quot;highlighter-rouge&quot;&gt;listenfd&lt;/code&gt;. If It is &lt;code class=&quot;highlighter-rouge&quot;&gt;listenfd&lt;/code&gt;, then call &lt;code class=&quot;highlighter-rouge&quot;&gt;accept&lt;/code&gt; on it and add &lt;code class=&quot;highlighter-rouge&quot;&gt;connfd&lt;/code&gt; (return value of &lt;code class=&quot;highlighter-rouge&quot;&gt;accept&lt;/code&gt;) to the interest list.&lt;/p&gt;
+      &lt;/li&gt;
+      &lt;li&gt;
+        &lt;p&gt;Else it is a &lt;code class=&quot;highlighter-rouge&quot;&gt;connfd&lt;/code&gt;. &lt;code class=&quot;highlighter-rouge&quot;&gt;read&lt;/code&gt; on it. If the header transport is done (a blank new line detected), then respond to it. Else store the status at &lt;code class=&quot;highlighter-rouge&quot;&gt;event.data.ptr&lt;/code&gt;.&lt;/p&gt;
+
+        &lt;p&gt;The status is defined as:&lt;/p&gt;
+
+        &lt;div class=&quot;language-c highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;c1&quot;&gt;// src/main.h&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;typedef&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;HttpStatus&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;connfd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;     &lt;span class=&quot;c1&quot;&gt;// connection file descriptor&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;char&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;header&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;   &lt;span class=&quot;c1&quot;&gt;// http header read, malloced with `MAX_HEADER` size&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;size_t&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;readn&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;   &lt;span class=&quot;c1&quot;&gt;// number of bytes read&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;FILE&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;file&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;     &lt;span class=&quot;c1&quot;&gt;// file to send&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;size_t&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;left&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;    &lt;span class=&quot;c1&quot;&gt;// number of bytes left to send&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;req_status_t&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;req_status&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; 
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;http_status_t&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;        &lt;/div&gt;
+
+        &lt;p&gt;While &lt;code class=&quot;highlighter-rouge&quot;&gt;req_status_t&lt;/code&gt; is defined as:&lt;/p&gt;
+
+        &lt;div class=&quot;language-c highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;c1&quot;&gt;// src/main.h&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;typedef&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;enum&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;REQUEST_STATUS&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;Reading&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;Writing&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;Ended&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;req_status_t&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;        &lt;/div&gt;
+
+        &lt;p&gt;Next time when &lt;code class=&quot;highlighter-rouge&quot;&gt;epoll_wait&lt;/code&gt; get events on this fd, the server will continue on the request.&lt;/p&gt;
+      &lt;/li&gt;
+      &lt;li&gt;
+        &lt;p&gt;After complete reading, connfd will enter status &lt;code class=&quot;highlighter-rouge&quot;&gt;Writing&lt;/code&gt;. If &lt;code class=&quot;highlighter-rouge&quot;&gt;sendfile&lt;/code&gt; cause &lt;code class=&quot;highlighter-rouge&quot;&gt;EAGAIN&lt;/code&gt;, and &lt;code class=&quot;highlighter-rouge&quot;&gt;left &amp;gt; 0&lt;/code&gt; , it means that writing end is temporily unavailable. I have to save the status, &lt;code class=&quot;highlighter-rouge&quot;&gt;EPOLL_CTL_MOD&lt;/code&gt; to change its trigger events to &lt;code class=&quot;highlighter-rouge&quot;&gt;EPOLLOUT | EPOLLET&lt;/code&gt;. And continue the writing next time.&lt;/p&gt;
+      &lt;/li&gt;
+    &lt;/ol&gt;
+  &lt;/li&gt;
+&lt;/ol&gt;
+
+&lt;h2 id=&quot;epoll-usage&quot;&gt;Epoll Usage&lt;/h2&gt;
+
+&lt;p&gt;You’d better first read the &lt;a href=&quot;http://man7.org/linux/man-pages/man7/epoll.7.html&quot;&gt;linux man page&lt;/a&gt;. But it’s ok here to present a brief summary of epoll usage (and especially in multithreaded environment).&lt;/p&gt;
+
+&lt;p&gt;Epoll just requires you to use &lt;code class=&quot;highlighter-rouge&quot;&gt;epoll_create1&lt;/code&gt;, &lt;code class=&quot;highlighter-rouge&quot;&gt;epoll_ctl&lt;/code&gt;, &lt;code class=&quot;highlighter-rouge&quot;&gt;epoll_wait&lt;/code&gt;api. &lt;code class=&quot;highlighter-rouge&quot;&gt;epoll_ctl&lt;/code&gt; includes three kinds of action: &lt;code class=&quot;highlighter-rouge&quot;&gt;EPOLL_CTL_ADD&lt;/code&gt;, &lt;code class=&quot;highlighter-rouge&quot;&gt;EPOLL_CTL_MOD&lt;/code&gt;, &lt;code class=&quot;highlighter-rouge&quot;&gt;EPOLL_CTL_DEL&lt;/code&gt;, which are self-explanatory.&lt;/p&gt;
+
+&lt;div class=&quot;language-c highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;epollfd&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;epoll_create1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;to create an epoll instance.&lt;/p&gt;
+
+&lt;div class=&quot;language-c highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;epoll_event&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ev&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;ev&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;events&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;EPOLLIN&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;EPOLLOUT&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;EPOLLET&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;ev&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;data&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;fd&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;fd_to_monitor&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;epoll_ctl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;epollfd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;EPOLL_CTL_ADD&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;fd_to_monitor&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;amp;&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ev&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;to add the fd to interest list. Here &lt;code class=&quot;highlighter-rouge&quot;&gt;EPOLLET&lt;/code&gt; means edge triggered mode. If you have read the doc or the post I mentioned above, you are familiar with it. &lt;code class=&quot;highlighter-rouge&quot;&gt;ev.data&lt;/code&gt; is in fact a union. I will explain it later on.&lt;/p&gt;
+
+&lt;div class=&quot;language-c highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;epoll_event&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;events&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;epoll_event&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;malloc&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;sizeof&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;epoll_event&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;*&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;MAX_EVENTS&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;nfds&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;epoll_wait&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;epollfd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;events&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;MAX_EVENTS&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;-&lt;/span&gt;&lt;span class=&quot;mi&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;nfds&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;perror&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;epoll_wait&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;continue&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;for&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;n&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;n&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;nfds&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;++&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;n&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;consume&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;events&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;n&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;].&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;data&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;fd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;to do what you want to do to the file descriptor.&lt;/p&gt;
+
+&lt;h3 id=&quot;multithread-epoll_wait-is-thread-safe-but&quot;&gt;Multithread: &lt;code class=&quot;highlighter-rouge&quot;&gt;epoll_wait&lt;/code&gt; is thread-safe, but…&lt;/h3&gt;
+
+&lt;p&gt;It’s absolutely ok to share an epoll file descriptor among several threads. Actually this is what epoll is designed as. If you create a epoll file descriptor each thread, every thread will just do its own job. You will lose the automatic thread communication that epoll provided. Concurrency will also be affected. (Because now every thread can only do its own work, and work can’t be dispatched among threads according to how busy threads are).&lt;/p&gt;
+
+&lt;p&gt;By creating a epollfd and passing it to each thread as argument, threads can share it. So &lt;code class=&quot;highlighter-rouge&quot;&gt;thread&lt;/code&gt;’s arg is defined as:&lt;/p&gt;
+
+&lt;div class=&quot;language-c highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;c1&quot;&gt;// src/main.h&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;thread_args&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;listenfd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;epollfd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;};&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;Then you can call &lt;code class=&quot;highlighter-rouge&quot;&gt;epoll_wait&lt;/code&gt; at this epollfd in each thread. As &lt;code class=&quot;highlighter-rouge&quot;&gt;epoll_wait&lt;/code&gt; is thread-safe, only one thread will be notified. &lt;strong&gt;But&lt;/strong&gt;, you have to use &lt;code class=&quot;highlighter-rouge&quot;&gt;EPOLLET&lt;/code&gt; to prevent what’s called spurious wake-up due to the feature of level triggered mode. Again, the post mentioned above will give you a sight into this.&lt;/p&gt;
+
+&lt;p&gt;Done? &lt;strong&gt;NOT ENOUGH&lt;/strong&gt;.&lt;/p&gt;
+
+&lt;p&gt;Remember to use &lt;code class=&quot;highlighter-rouge&quot;&gt;EPOLLONESHOT&lt;/code&gt; mode.&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;EPOLLONESHOT:&lt;/p&gt;
+
+  &lt;p&gt;Sets the one-shot behavior for the associated file descriptor. This means that after an event is pulled out with epoll_wait(2) the associated file descriptor is internally disabled and no other events will be reported by the epoll interface. The user must call epoll_ctl() with EPOLL_CTL_MOD to rearm the file descriptor with a new event mask.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;If you don’t use oneshot (like me), two contiguous events on the same fd may cause this fd to be processed in two different threads at the same time. This behaviour may not be what you want. In my case, I debugged this out for a whole morning.&lt;/p&gt;
+
+&lt;p&gt;Remember to call &lt;code class=&quot;highlighter-rouge&quot;&gt;epoll_ctl&lt;/code&gt; with &lt;code class=&quot;highlighter-rouge&quot;&gt;EPOLL_CTL_MOD&lt;/code&gt; again after processing an event on the fd, as long as work isn’t done.&lt;/p&gt;
+
+&lt;h3 id=&quot;non-blocking-io&quot;&gt;Non-blocking I/O&lt;/h3&gt;
+
+&lt;p&gt;I think linux non-blocking I/O is not well documented. However you have to use it as edge triggered mode requires you to do so. You should be careful while performing non-blocking I/O.&lt;/p&gt;
+
+&lt;p&gt;First, how to set a file descriptor to non-blocking:&lt;/p&gt;
+
+&lt;div class=&quot;language-c highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;kt&quot;&gt;void&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;setnonblocking&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;fd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;old_option&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;fcntl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;fd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;F_GETFL&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;new_option&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;old_option&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;|&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;O_NONBLOCK&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+      
+    &lt;span class=&quot;n&quot;&gt;fcntl&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;fd&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;F_SETFL&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;new_option&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;When reading on non-blocking I/O, you have to pay attention to when the reading or writing is completed. In web server, you can decide this in server end. For example, it indicated that the request header was ended sending normally when you got a blank new line.&lt;/p&gt;
+
+&lt;p&gt;It of course feels good to &lt;code class=&quot;highlighter-rouge&quot;&gt;read&lt;/code&gt; from the fd, and get all of what you expect until a blank new line. But in most case, in non-blocking mode, you will get an &lt;code class=&quot;highlighter-rouge&quot;&gt;-1&lt;/code&gt; from &lt;code class=&quot;highlighter-rouge&quot;&gt;read&lt;/code&gt; and &lt;code class=&quot;highlighter-rouge&quot;&gt;errno&lt;/code&gt; though everything goes right. The &lt;code class=&quot;highlighter-rouge&quot;&gt;errno&lt;/code&gt; will be set to &lt;code class=&quot;highlighter-rouge&quot;&gt;EAGAIN&lt;/code&gt; or &lt;code class=&quot;highlighter-rouge&quot;&gt;EWOULDBLOCK&lt;/code&gt;, which indicates &lt;em&gt;source temporarily unavailable&lt;/em&gt;.&lt;/p&gt;
+
+&lt;p&gt;So you should write code like this:&lt;/p&gt;
+
+&lt;div class=&quot;language-c highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ret&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;&amp;lt;&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;errno&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;EAGAIN&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;||&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;errno&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;EWOULDBLOCK&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;c1&quot;&gt;// read end normally&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;break&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;perror&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;s&quot;&gt;&quot;read&quot;&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;);&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;break&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;else&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;ret&lt;/span&gt; &lt;span class=&quot;o&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;mi&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;c1&quot;&gt;// EOF encountered&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;break&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;else&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;c1&quot;&gt;// --snippet--&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;The client may also, e.g., send half of the header, then send the remaining half after processing some work. You can’t just wait the data to come. The server has other clients to serve. In both case, you have to deal with it. You have to detect whether the &lt;code class=&quot;highlighter-rouge&quot;&gt;read&lt;/code&gt;ing is end, and if not, to save the status and continue on it when another event arrives on the fd.&lt;/p&gt;
+
+&lt;p&gt;So how to save status?&lt;/p&gt;
+
+&lt;h3 id=&quot;save-status-in-epoll_eventdataptr&quot;&gt;Save status in &lt;code class=&quot;highlighter-rouge&quot;&gt;epoll_event.data.ptr&lt;/code&gt;&lt;/h3&gt;
+
+&lt;p&gt;Ok, a natural choice came to some people (ok, that’s also me, and some of my classmates) that we should establish a data structure like map to map connection file descriptor to status and fetch from it when an epoll event come and this map has to be thread-safe and it is hard in pure C because C hasn’t provided itself so let us implement it first!&lt;/p&gt;
+
+&lt;p&gt;When I was thinking on whether to implement a hashmap myself or using C++, I found that … &lt;code class=&quot;highlighter-rouge&quot;&gt;epoll_event.data&lt;/code&gt; is in fact a union and you could use &lt;code class=&quot;highlighter-rouge&quot;&gt;ptr&lt;/code&gt; field instead of &lt;code class=&quot;highlighter-rouge&quot;&gt;fd&lt;/code&gt; field to store other status. All you have to do is to define your status class, malloc it,  assign it to the &lt;code class=&quot;highlighter-rouge&quot;&gt;ptr&lt;/code&gt; and free it after all the work is done. I have described my &lt;code class=&quot;highlighter-rouge&quot;&gt;HttpStatus&lt;/code&gt; class above.&lt;/p&gt;
+
+&lt;h2 id=&quot;other-things-you-should-notice&quot;&gt;Other things you should notice&lt;/h2&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;Use &lt;code class=&quot;highlighter-rouge&quot;&gt;sendfile&lt;/code&gt; to prevent kernel space to user space copy while sending data to client. It will significantly improve your throughput.&lt;/li&gt;
+  &lt;li&gt;I only implement &lt;code class=&quot;highlighter-rouge&quot;&gt;GET&lt;/code&gt; method on the server.&lt;/li&gt;
+  &lt;li&gt;Remember to write exception handling. It can also help you while debugging.&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h2 id=&quot;load-test&quot;&gt;Load test&lt;/h2&gt;
+
+&lt;p&gt;Load test on my dual core Ubuntu Virtual Machine:&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/img/posts/server_load_test.png&quot; alt=&quot;server_load_test&quot; /&gt;&lt;/p&gt;</content><author><name></name></author><category term="linux" /><category term="epoll" /><category term="c" /><category term="http" /><category term="concurrency" /><summary type="html">Several days ago, my Operating System class assigned a lab, to write a concurrent http server. I finally decide to complete this lab in C and using epoll to implement I/O multiplexing. It turns out that epoll is really hard to use, especially in multithreaded environments. So I write this post to document some pitfalls while using epoll. The source code of the HTTP Server can be found at here.</summary></entry><entry><title type="html">Hello World</title><link href="https://kaleid-liner.github.io/blog/2019/06/02/hello-world.html" rel="alternate" type="text/html" title="Hello World" /><published>2019-06-02T00:00:00+00:00</published><updated>2019-06-02T00:00:00+00:00</updated><id>https://kaleid-liner.github.io/blog/2019/06/02/hello-world</id><content type="html" xml:base="https://kaleid-liner.github.io/blog/2019/06/02/hello-world.html">&lt;p&gt;Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Nulla facilisi morbi tempus iaculis urna. Nulla facilisi etiam dignissim diam quis enim. Viverra vitae congue eu consequat ac felis donec et. Ornare arcu dui vivamus arcu felis bibendum. Neque convallis a cras semper. Et tortor consequat id porta. Cras tincidunt lobortis feugiat vivamus at augue eget arcu dictum. 
+&lt;!--more--&gt;
+Turpis nunc eget lorem dolor. Consequat ac felis donec et odio pellentesque. Consectetur adipiscing elit pellentesque habitant morbi tristique senectus et. Luctus accumsan tortor posuere ac ut consequat semper viverra. Sed nisi lacus sed viverra tellus. Sit amet mattis vulputate enim. Purus semper eget duis at tellus at. Vestibulum rhoncus est pellentesque elit ullamcorper dignissim. Morbi blandit cursus risus at ultrices mi tempus. Et malesuada fames ac turpis egestas maecenas. Quam nulla porttitor massa id neque.&lt;/p&gt;
+
+&lt;p&gt;Mattis rhoncus urna neque viverra justo nec ultrices dui. Nec dui nunc mattis enim ut tellus. Viverra maecenas accumsan lacus vel facilisis volutpat est velit. Lacinia at quis risus sed vulputate odio ut. Pulvinar mattis nunc sed blandit libero volutpat sed cras. Commodo odio aenean sed adipiscing. Massa massa ultricies mi quis hendrerit dolor magna. Imperdiet massa tincidunt nunc pulvinar sapien et ligula ullamcorper malesuada. Porta non pulvinar neque laoreet suspendisse interdum consectetur libero id. Nunc sed augue lacus viverra vitae congue eu consequat ac.&lt;/p&gt;
+
+&lt;p&gt;Turpis egestas pretium aenean pharetra magna ac placerat vestibulum. Id eu nisl nunc mi ipsum faucibus vitae aliquet. Tellus elementum sagittis vitae et leo duis ut. Pellentesque massa placerat duis ultricies lacus sed turpis tincidunt id. Ipsum consequat nisl vel pretium lectus quam id leo in. Quam pellentesque nec nam aliquam sem et tortor. Purus viverra accumsan in nisl nisi scelerisque eu ultrices. Leo integer malesuada nunc vel risus commodo viverra maecenas. Massa sapien faucibus et molestie. Tortor vitae purus faucibus ornare suspendisse sed. Sapien faucibus et molestie ac. Varius sit amet mattis vulputate enim. Magna fermentum iaculis eu non diam phasellus vestibulum lorem. Commodo viverra maecenas accumsan lacus vel facilisis volutpat. Amet massa vitae tortor condimentum lacinia quis. Eu volutpat odio facilisis mauris sit amet massa vitae tortor. Amet tellus cras adipiscing enim eu turpis egestas pretium. Nulla pharetra diam sit amet nisl suscipit. Tortor posuere ac ut consequat semper viverra nam libero.&lt;/p&gt;
+
+&lt;p&gt;Et leo duis ut diam. Aliquet lectus proin nibh nisl condimentum. Quis varius quam quisque id diam vel quam. Nisi scelerisque eu ultrices vitae auctor eu augue ut. Malesuada proin libero nunc consequat. Sit amet nisl suscipit adipiscing bibendum est. Non tellus orci ac auctor. Eu non diam phasellus vestibulum lorem sed risus ultricies. Massa tempor nec feugiat nisl. Donec adipiscing tristique risus nec feugiat in fermentum. Adipiscing elit duis tristique sollicitudin nibh sit amet. Sed viverra tellus in hac habitasse platea dictumst vestibulum.&lt;/p&gt;
+
+&lt;p&gt;Pretium quam vulputate dignissim suspendisse in est. Porta non pulvinar neque laoreet suspendisse interdum consectetur libero id. Arcu dictum varius duis at consectetur. Mollis aliquam ut porttitor leo a diam sollicitudin tempor. Elit pellentesque habitant morbi tristique senectus. Posuere urna nec tincidunt praesent semper. Tincidunt tortor aliquam nulla facilisi cras fermentum odio. Elit eget gravida cum sociis natoque penatibus. A cras semper auctor neque. Ornare arcu dui vivamus arcu felis bibendum. Lectus magna fringilla urna porttitor rhoncus dolor. Id velit ut tortor pretium viverra suspendisse potenti. Eget nunc lobortis mattis aliquam faucibus. At risus viverra adipiscing at in tellus integer. Id cursus metus aliquam eleifend mi. Posuere urna nec tincidunt praesent semper. Vitae proin sagittis nisl rhoncus.&lt;/p&gt;</content><author><name></name></author><category term="hello-world" /><category term="lorem-ipsum" /><summary type="html">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Nulla facilisi morbi tempus iaculis urna. Nulla facilisi etiam dignissim diam quis enim. Viverra vitae congue eu consequat ac felis donec et. Ornare arcu dui vivamus arcu felis bibendum. Neque convallis a cras semper. Et tortor consequat id porta. Cras tincidunt lobortis feugiat vivamus at augue eget arcu dictum.</summary></entry></feed>

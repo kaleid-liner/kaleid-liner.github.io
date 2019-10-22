@@ -1,16 +1,23 @@
----
-layout: nil
----
 [
-  {% for post in site.posts %}
+  
     {
-      "title"    : "{{ post.title | escape }}",
-      "category" : "{{ post.category }}",
-      "tags"     : "{{ post.tags | join: ', ' }}",
-      "url"      : "{{ site.baseurl }}{{ post.url }}",
-      "date"     : "{{ post.date | date: '%b %d, %Y' }}",
-      "excerpt"  : {{ post.excerpt | strip_html | escape | jsonify }},
-      "read_time"  : "{{ post.content | read_time }}"
-    } {% unless forloop.last %},{% endunless %}
-  {% endfor %}
+      "title"    : "Hello World",
+      "category" : "",
+      "tags"     : "hello-world, lorem-ipsum",
+      "url"      : "/blog/2019/06/02/hello-world.html",
+      "date"     : "Jun 02, 2019",
+      "excerpt"  : "Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Nulla facilisi morbi tempus iaculis urna. Nulla facilisi etiam dignissim diam quis enim. Viverra vitae congue eu consequat ac felis donec et. Ornare arcu dui vivamus arcu felis bibendum. Neque convallis a cras semper. Et tortor consequat id porta. Cras tincidunt lobortis feugiat vivamus at augue eget arcu dictum.\n",
+      "read_time"  : "3 minutes"
+    } ,
+  
+    {
+      "title"    : "Concurrent HTTP Server with Epoll",
+      "category" : "",
+      "tags"     : "linux, epoll, c, http, concurrency",
+      "url"      : "/blog/2019/06/02/epoll-web-server.html",
+      "date"     : "Jun 02, 2019",
+      "excerpt"  : "Several days ago, my Operating System class assigned a lab, to write a concurrent http server. I finally decide to complete this lab in C and using epoll to implement I/O multiplexing. It turns out that epoll is really hard to use, especially in multithreaded environments. So I write this post to document some pitfalls while using epoll. The source code of the HTTP Server can be found at here.\n",
+      "read_time"  : "10 minutes"
+    } 
+  
 ]

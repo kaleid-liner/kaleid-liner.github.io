@@ -1,43 +1,128 @@
----
-# Feel free to add content and custom Front Matter to this file.
-# To modify the layout, see https://jekyllrb.com/docs/themes/#overriding-theme-defaults
+<!DOCTYPE html>
+<html lang="en-US">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+        <link rel="stylesheet" href="/assets/css/styles.css">
+        <link rel="stylesheet" href="//use.fontawesome.com/releases/v5.11.2/css/all.css">
+        <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
+        <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+        <title></title>
+    </head>
+    <body>
+        <div class="wrap main">
+        <header class="site-header">
+            <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                <a class="navbar-brand" href="/">
+                    <img class="avatar" src="/assets/img/avatar.png">
+                </a>
+                <a class="navbar-brand mr-auto" href="/">
+                KLBlog</a>
+                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarContent" aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarContent">
+                    <ul class="navbar-nav ml-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" title="Blog" href="/blog/">
+                            Blog</a>
+                        </li>
+                        
 
-layout: home
----
+                         
+                            
+                            
+                         
+                            
+                            <li class="nav-item">
+                                <a class="nav-link" title="About" href="/about/">
+                                    About</a>
+                            </li>
+                            
+                            
+                         
+                            
+                            
+                         
+                            
+                            
+                         
+                            
+                            
+                         
+                            
+                            <li class="nav-item">
+                                <a class="nav-link" title="Portfolio" href="/portfolio/">
+                                    Portfolio</a>
+                            </li>
+                            
+                            
+                         
+                            
+                            
+                         
+                            
+                            <li class="nav-item">
+                                <a class="nav-link" title="Search" href="/search/">
+                                    <i class="fas fa-search"></i>
+                                    </a>
+                            </li>
+                            
+                            
+                         
+                            
+                            
+                        
+                    </ul>
+                </div>
+            </nav>
+        </header>
+
+        <div class="page-hero dflex justify-content-center" style="background-image: url('/assets/img/feature_img.jpg');">
+    <img src="/assets/img/user_avatar.jpg" class="rounded-circle shadow-lg user-avatar">
+    <h1 class="text-light font-weight-bold mt-3">Kaleid Liner</h1>
+    <p class="header-lead">CS Undergraduate, Love coding, Code for fun</p>
+    <div>
+        <a href="/blog/" class="btn btn-outline-light"><i class="fas fa-blog"></i> Blogs</a>
+        <a href="/about/" class="btn btn-outline-light"><i class="fas fa-user"></i> About</a>
+    </div>
+</div>
 
 <div class="container-fluid mt-5">
     <div class="row">
         <div class="col-md">
             <div class="card feature-card">
-                <img src="{{ '/assets/img/blog.jpg' | relative_url }}" class="card-img-top" alt="blog">
+                <img src="/assets/img/blog.jpg" class="card-img-top" alt="blog">
                 <div class="card-body">
                     <h5 class="card-title">Blog</h5>
                     <p class="card-text">I'm not a very proficient blogger.
                         But you may find some of the posts helpful or interesting.
                         Blog mainly in English about geek things.</p>
-                    <a href="{{ '/blog' | relative_url }}" class="btn btn-primary"><i class="fas fa-book-reader"></i> Read</a>
+                    <a href="/blog" class="btn btn-primary"><i class="fas fa-book-reader"></i> Read</a>
                 </div>
             </div>
         </div>
         <div class="col-md">
             <div class="card feature-card">
-                <img src="{{ '/assets/img/portfolio.jpg' | relative_url }}" class="card-img-top" alt="portfolio">
+                <img src="/assets/img/portfolio.jpg" class="card-img-top" alt="portfolio">
                 <div class="card-body">
                     <h5 class="card-title">Portfolio</h5>
                     <p class="card-text">Projects I am working on. Some of them are really exciting. (in course of construction...)</p>
-                    <a href="{{ '/portfolio' | relative_url }}" class="btn btn-primary"><i class="fas fa-folder-open"></i> Open</a>
+                    <a href="/portfolio" class="btn btn-primary"><i class="fas fa-folder-open"></i> Open</a>
                 </div>
             </div>
         </div>
         <div class="col-md">
             <div class="card feature-card">
-                <img src="{{ '/assets/img/cv.png' | relative_url }}" class="card-img-top" alt="cv">
+                <img src="/assets/img/cv.png" class="card-img-top" alt="cv">
                 <div class="card-body">
                     <h5 class="card-title">Curriculum Vitae</h5>
                     <p class="card-text">Information about me the formal way.
                         (It's things about Jianyu Wei instead of kaleid-liner)
                     </p>
-                    <a href="{{ '/about/more' | relative_url }}" class="btn btn-primary"><i class="fas fa-eye"></i> View</a>
+                    <a href="/about/more" class="btn btn-primary"><i class="fas fa-eye"></i> View</a>
                 </div>
             </div>
         </div>
@@ -46,7 +131,47 @@ layout: home
     <div class="container mt-5">
         <hr>
 
-        {% include carousel.html %}
+        <div id="indexCarousel" class="carousel slide" data-ride="carousel">
+    <ol class="carousel-indicators">
+        <li data-target="#indexCarousel" data-slide-to="0" class="active"></li>
+        <li data-target="#indexCarousel" data-slide-to="1"></li>
+        <li data-target="#indexCarousel" data-slide-to="2"></li>
+    </ol>
+    <div class="carousel-inner">
+        <div class="carousel-caption carousel-caption-top">
+            <h1>Explore the website quickly.</h1>
+        </div>
+        <div class="carousel-item active">
+            <a href="/search/"><img src="/assets/img/features/open_book.jpg" alt="page-feature"></a>
+            <div class="carousel-caption d-none d-md-block">
+                <h3>Search</h3>
+                <p>What are you looking for?</p>
+            </div>
+        </div>
+        <div class="carousel-item">
+            <a href="/blog/2019/06/02/epoll-web-server.html"><img src="/assets/img/features/computer.jpeg" alt="post-feature"></a>
+            <div class="carousel-caption d-none d-md-block">
+                <h3>Concurrent HTTP Server with Epoll</h3>
+                <p>A Simple yet high performance HTTP server implemented with epoll and pure C.</p>
+            </div>
+        </div>
+        <div class="carousel-item">
+            <a href="/about/more"><img src="/assets/img/features/writing_coffee_mac.jpg" class="d-block w-100" alt="post-feature"></a>
+            <div class="carousel-caption d-none d-md-block">
+                <h3>Curriculum Vitae</h3>
+                <p>Know something about Jianyu Wei.</p>
+            </div>
+        </div>
+    </div>
+    <a class="carousel-control-prev" href="#indexCarousel" role="button" data-slide="prev">
+        <span class="carousel-control-prev-icon" aria-hidden="true"></span>
+        <span class="sr-only">Previous</span>
+    </a>
+    <a class="carousel-control-next" href="#indexCarousel" role="button" data-slide="next">
+        <span class="carousel-control-next-icon" aria-hidden="true"></span>
+        <span class="sr-only">Next</span>
+    </a>
+</div>
     </div>
 </div>
 
@@ -89,3 +214,42 @@ layout: home
         $('#assistModal').modal('show');
     });
 </script>
+
+
+        </div>
+
+        <footer class="bg-light site-footer d-flex flex-column align-items-center justify-content-center">
+            <div>
+                <p>KLBlog authored by ©
+                <a href="https://github.com/kaleid-liner" class="text-muted">kaleid-liner</a>
+                with <a href="https://getbootstrap.com" class="text-muted">Bootstrap</a></p>
+            </div>
+            <ul class="nav">
+                <li class="nav-item">
+                    <a class="nav-link text-dark" href="mailto:noob@mail.ustc.edu.cn" title="Email">
+                        <span class="fa-stack fa-lg">
+                            <i class="fas fa-circle fa-stack-2x"></i>
+                            <i class="fas fa-envelope fa-stack-1x fa-inverse"></i>
+                        </span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link text-dark" href="https://github.com/kaleid-liner" title="Follow on Github">
+                        <span class="fa-stack fa-lg">
+                            <i class="fas fa-circle fa-stack-2x"></i>
+                            <i class="fab fa-github fa-stack-1x fa-inverse"></i>
+                        </span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link text-dark" href="/feed.xml" title="Feed">
+                        <span class="fa-stack fa-lg">
+                            <i class="fas fa-circle fa-stack-2x"></i>
+                            <i class="fas fa-rss fa-stack-1x fa-inverse"></i>
+                        </span>
+                    </a>
+                </li>
+            </ul>
+        </footer>
+    </body>
+</html>

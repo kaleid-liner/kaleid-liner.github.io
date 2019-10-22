@@ -4,49 +4,83 @@
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
-        <link rel="stylesheet" href="{{ '/assets/css/styles.css' | relative_url }}">
+        <link rel="stylesheet" href="/assets/css/styles.css">
         <link rel="stylesheet" href="//use.fontawesome.com/releases/v5.11.2/css/all.css">
         <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
         <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
-        <title>{{ page.title }}</title>
+        <title>Portfolio</title>
     </head>
     <body>
         <div class="wrap main">
         <header class="site-header">
             <nav class="navbar navbar-expand-lg navbar-light bg-light">
-                <a class="navbar-brand" href="{{ '/' | relative_url }}">
-                    <img class="avatar" src="{{ site.avatar | relative_url }}">
+                <a class="navbar-brand" href="/">
+                    <img class="avatar" src="/assets/img/avatar.png">
                 </a>
-                <a class="navbar-brand mr-auto" href="{{ '/' | relative_url }}">
-                {{ site.title }}</a>
+                <a class="navbar-brand mr-auto" href="/">
+                KLBlog</a>
                 <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarContent" aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
                     <span class="navbar-toggler-icon"></span>
                 </button>
                 <div class="collapse navbar-collapse" id="navbarContent">
                     <ul class="navbar-nav ml-auto">
                         <li class="nav-item">
-                            <a class="nav-link" title="Blog" href="{{ '/blog/' | relative_url }}">
+                            <a class="nav-link" title="Blog" href="/blog/">
                             Blog</a>
                         </li>
-                        {% assign name_page = "" %}
+                        
 
-                        {% for page in site.pages %} 
-                            {% unless page.title == null or page.hide or name_page contains page.title %}
+                         
+                            
+                            
+                         
+                            
                             <li class="nav-item">
-                                <a class="nav-link" title="{{ page.title }}" href="{{ page.url | relative_url }}">
-                                    {% if page.icon %}<i class="fas fa-{{ page.icon }}"></i>
-                                    {% else %}{{ page.title }}{% endif %}</a>
+                                <a class="nav-link" title="About" href="/about/">
+                                    About</a>
                             </li>
-                            {% endunless %}
-                            {% assign num_page = page.title | append: num_page %}
-                        {% endfor %}
+                            
+                            
+                         
+                            
+                            
+                         
+                            
+                            
+                         
+                            
+                            
+                         
+                            
+                            <li class="nav-item">
+                                <a class="nav-link" title="Portfolio" href="/portfolio/">
+                                    Portfolio</a>
+                            </li>
+                            
+                            
+                         
+                            
+                            
+                         
+                            
+                            <li class="nav-item">
+                                <a class="nav-link" title="Search" href="/search/">
+                                    <i class="fas fa-search"></i>
+                                    </a>
+                            </li>
+                            
+                            
+                         
+                            
+                            
+                        
                     </ul>
                 </div>
             </nav>
         </header>
 
-        {{ content }}
+        
 
         </div>
 
@@ -58,7 +92,7 @@
             </div>
             <ul class="nav">
                 <li class="nav-item">
-                    <a class="nav-link text-dark" href="mailto:{{ site.email }}" title="Email">
+                    <a class="nav-link text-dark" href="mailto:noob@mail.ustc.edu.cn" title="Email">
                         <span class="fa-stack fa-lg">
                             <i class="fas fa-circle fa-stack-2x"></i>
                             <i class="fas fa-envelope fa-stack-1x fa-inverse"></i>
@@ -66,7 +100,7 @@
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link text-dark" href="https://github.com/{{ site.github_username }}" title="Follow on Github">
+                    <a class="nav-link text-dark" href="https://github.com/kaleid-liner" title="Follow on Github">
                         <span class="fa-stack fa-lg">
                             <i class="fas fa-circle fa-stack-2x"></i>
                             <i class="fab fa-github fa-stack-1x fa-inverse"></i>
@@ -74,7 +108,7 @@
                     </a>
                 </li>
                 <li class="nav-item">
-                    <a class="nav-link text-dark" href="{{ '/feed.xml' | relative_url }}" title="Feed">
+                    <a class="nav-link text-dark" href="/feed.xml" title="Feed">
                         <span class="fa-stack fa-lg">
                             <i class="fas fa-circle fa-stack-2x"></i>
                             <i class="fas fa-rss fa-stack-1x fa-inverse"></i>

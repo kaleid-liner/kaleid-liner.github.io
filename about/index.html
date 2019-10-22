@@ -9,7 +9,7 @@
         <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
         <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
         <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
-        <title></title>
+        <title>About</title>
     </head>
     <body>
         <div class="wrap main">
@@ -80,105 +80,57 @@
             </nav>
         </header>
 
-        <div class="page-hero dflex justify-content-center" style="background-image: url('/assets/img/feature_img.jpg');">
-    <img src="/assets/img/user_avatar.jpg" class="rounded-circle shadow-lg user-avatar">
-    <h1 class="text-light font-weight-bold mt-3">Kaleid Liner</h1>
-    <p class="header-lead">CS Undergraduate, Love coding, Code for fun</p>
-    <div>
-        <a href="/blog/" class="btn btn-outline-light"><i class="fas fa-blog"></i> Blogs</a>
-        <a href="/about/" class="btn btn-outline-light"><i class="fas fa-user"></i> About</a>
-    </div>
-</div>
-
-<div class="container">
-    <div class="col">
-        
-        <div class="row post-teaser">
-            <div class="card border-light">
-                
-                <div class="post-thumbnail">
-                    <img class="card-img-top" alt="thumbnail" src="/assets/img/thumbnails/hello_world.png">
-                </div>
-                
-                <div class="card-body">
-                    <h3 class="card-title"><a href="/blog/2019/06/02/hello-world.html" class="text-reset">Hello World</a></h5>
-                    
-                    
-
-<p class="post-info"><i class="fas fa-calendar-alt"></i> Jun 02, 2019
-    &nbsp;&nbsp;
-    <i class="fas fa-clock"></i> 3 minutes read</p>
-                    <p class="card-text mt-2">Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Nulla facilisi morbi tempus iaculis urna. Nulla facilisi etiam dignissim diam quis enim. Viverra vitae congue eu consequat ac felis donec et. Ornare arcu dui vivamus arcu felis bibendum. Neque convallis a cras semper. Et tortor consequat id porta. Cras tincidunt lobortis feugiat vivamus at augue eget arcu dictum.
-</p>
-                </div>
-                <div class="card-footer text-muted">
-                    <ul class="list-inline">
-                    
-                    <li class="list-inline-item">
-                        <i class="fas fa-tag"></i> HELLO-WORLD
-                    </li>
-                    
-                    <li class="list-inline-item">
-                        <i class="fas fa-tag"></i> LOREM-IPSUM
-                    </li>
-                    
-                    </ul>
-                </div>
-            </div>
+        <article>
+    <header>
+        <div class="page-hero_small" 
+            style="background-image: url('/assets/img/programming.jpg');">
+            <h1 class="post-title">About</h1>
+            
         </div>
-        
-        <div class="row post-teaser">
-            <div class="card border-light">
-                
-                <div class="post-thumbnail">
-                    <img class="card-img-top" alt="thumbnail" src="/assets/img/thumbnails/search-map.jpeg">
-                </div>
-                
-                <div class="card-body">
-                    <h3 class="card-title"><a href="/blog/2019/06/02/epoll-web-server.html" class="text-reset">Concurrent HTTP Server with Epoll</a></h5>
-                    
-                    
+    </header>
 
-<p class="post-info"><i class="fas fa-calendar-alt"></i> Jun 02, 2019
-    &nbsp;&nbsp;
-    <i class="fas fa-clock"></i> 10 minutes read</p>
-                    <p class="card-text mt-2">Several days ago, my Operating System class assigned a lab, to write a concurrent http server. I finally decide to complete this lab in C and using epoll to implement I/O multiplexing. It turns out that epoll is really hard to use, especially in multithreaded environments. So I write this post to document some pitfalls while using epoll. The source code of the HTTP Server can be found at here.
-</p>
-                </div>
-                <div class="card-footer text-muted">
-                    <ul class="list-inline">
-                    
-                    <li class="list-inline-item">
-                        <i class="fas fa-tag"></i> LINUX
-                    </li>
-                    
-                    <li class="list-inline-item">
-                        <i class="fas fa-tag"></i> EPOLL
-                    </li>
-                    
-                    <li class="list-inline-item">
-                        <i class="fas fa-tag"></i> C
-                    </li>
-                    
-                    <li class="list-inline-item">
-                        <i class="fas fa-tag"></i> HTTP
-                    </li>
-                    
-                    <li class="list-inline-item">
-                        <i class="fas fa-tag"></i> CONCURRENCY
-                    </li>
-                    
-                    </ul>
-                </div>
-            </div>
-        </div>
-        
-    </div>
+    <section id="content" class="post-content">
+        <h2 id="about-klblog">About KLBlog</h2>
 
-    
-</div>
+<blockquote>
+  <p><strong>此段给助教</strong>：</p>
 
+  <p>此网站使用了 <a href="https://jekyllrb.com">jekyll</a>. 但未使用任意第三方 theme，所以不存在套一些 markdown 或在模版中填一下空就 ok 的情况。所有的 html 和 css 都为自己编写（部分 css，例如 post 的 markdown style 部分参考了 <a href="https://github.com/sylhare/Type-on-Strap">type-on-strap</a>)。此项目的源码可见 <a href="https://github.com/kaleid-liner/jekyll-klblog">https://github.com/kaleid-liner/jekyll-klblog</a>. (几篇博客是之前写的，host 在 Github Page 上，所以直接拷过来了)</p>
+</blockquote>
 
+<p>KLBlog is powerd by <a href="https://jekyllrb.com">jekyll</a> and <a href="https://getbootstrap.com">bootstrap</a>. Some of the ideas are inspired by  <a href="https://github.com/sylhare/Type-on-Strap">Type on Strap</a>.</p>
+
+<p>I’m a beginner of front-end developing, so I tried to write minimal amout of CSS to implement desired appearance. As a result, KLBlog is rather crude. But It still follows the basic rules of responsive design. So it should look good on most devices.</p>
+
+<h2 id="about-kaleid-liner">About kaleid-liner</h2>
+
+<p>CS undergraduate of USTC. Write post mainly in English (though not proficient enough). Perhaps will blog in Chinese when I’m not int the mood.</p>
+
+<p>Programming languages: (utilization rate in descending order)</p>
+
+<ul>
+  <li>C/C++ (also my introductory language)</li>
+  <li>C# (feel good when writing C#)</li>
+  <li>Python</li>
+  <li>Verilog (perhaps will never write it again after 2019-05-31)</li>
+  <li>Rust, Java, javascript, HTML</li>
+  <li>matlab, Fortran</li>
+</ul>
+
+<p>Frameworks:</p>
+
+<ul>
+  <li>.NET (including Core/Framework, ASP.NET)</li>
+  <li>Django</li>
+  <li>…</li>
+</ul>
+
+<p>Blog principally about CS. Sometimes may write blogs on Galgame.</p>
+
+<p>Want to learn more about me? Click <a href="more/">here</a>.</p>
+
+    </section>
+</article>
 
         </div>
 
