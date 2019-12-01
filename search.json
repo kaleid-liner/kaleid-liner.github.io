@@ -17,7 +17,7 @@
       "url"      : "/blog/2019/06/02/epoll-web-server.html",
       "date"     : "Jun 02, 2019",
       "excerpt"  : "Several days ago, my Operating System class assigned a lab, to write a concurrent http server. I finally decide to complete this lab in C and using epoll to implement I/O multiplexing. It turns out that epoll is really hard to use, especially in multithreaded environments. So I write this post to document some pitfalls while using epoll. The source code of the HTTP Server can be found at here.\n",
-      "read_time"  : "10 minutes"
+      "read_time"  : "11 minutes"
     } 
   
 ]

@@ -90,7 +90,7 @@
 
 <p class="post-info"><i class="fas fa-calendar-alt"></i> Jun 02, 2019
     &nbsp;&nbsp;
-    <i class="fas fa-clock"></i> 10 minutes read</p>
+    <i class="fas fa-clock"></i> 11 minutes read</p>
         </div>
     </header>
 
@@ -98,6 +98,10 @@
         <p>Several days ago, my Operating System class assigned a lab, <a href="https://github.com/OSH-2019/OSH-2019.github.io/tree/master/3">to write a concurrent http server</a>. I finally decide to complete this lab in C and using <a href="http://man7.org/linux/man-pages/man7/epoll.7.html"><strong>epoll</strong></a> to implement I/O multiplexing. It turns out that epoll is really hard to use, especially in multithreaded environments. So I write this post to document some pitfalls while using epoll. The source code of the HTTP Server can be found at <a href="https://github.com/kaleid-liner/epoll-web-server">here</a>. <!--more--></p>
 
 <p>The epoll API monitors multiple file descriptors to see if I/O is possible on any of them. To understand epoll, I recommend <a href="https://medium.com/@copyconstruct/the-method-to-epolls-madness-d9d2d6378642">this post</a>, a well-written article that explains low-level details of epoll thoroughly and differentiates between level-triggered and edge-triggered mode.</p>
+
+<blockquote>
+  <p>Note: As mentioned above, this post just document some <strong>pitfalls</strong> while using epoll. So it assumes that you had some basic knowledge about epoll or even have started to work on it. The <a href="https://medium.com/@copyconstruct/the-method-to-epolls-madness-d9d2d6378642">post</a> and doc will be helpful if you didn’t. The root of this post is based on the fact that, even if you have understood epoll, it’s still error-prone.</p>
+</blockquote>
 
 <h2 id="use-thread-pool">Use thread pool</h2>
 
@@ -289,7 +293,7 @@
 <ul>
   <li>Use <code class="highlighter-rouge">sendfile</code> to prevent kernel space to user space copy while sending data to client. It will significantly improve your throughput.</li>
   <li>I only implement <code class="highlighter-rouge">GET</code> method on the server.</li>
-  <li>Remember to write exception handling. It can also help you while debugging.</li>
+  <li>Remember to write exception handling. It can also save you a lot of time while debugging.</li>
 </ul>
 
 <h2 id="load-test">Load test</h2>
