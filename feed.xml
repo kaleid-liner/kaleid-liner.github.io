@@ -1,4 +1,611 @@
-<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.0.0">Jekyll</generator><link href="https://kaleid-liner.github.io/feed.xml" rel="self" type="application/atom+xml" /><link href="https://kaleid-liner.github.io/" rel="alternate" type="text/html" /><updated>2019-12-01T08:08:53+00:00</updated><id>https://kaleid-liner.github.io/feed.xml</id><title type="html">KLBlog</title><subtitle>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.</subtitle><entry><title type="html">Concurrent HTTP Server with Epoll</title><link href="https://kaleid-liner.github.io/blog/2019/06/02/epoll-web-server.html" rel="alternate" type="text/html" title="Concurrent HTTP Server with Epoll" /><published>2019-06-02T00:00:00+00:00</published><updated>2019-06-02T00:00:00+00:00</updated><id>https://kaleid-liner.github.io/blog/2019/06/02/epoll-web-server</id><content type="html" xml:base="https://kaleid-liner.github.io/blog/2019/06/02/epoll-web-server.html">&lt;p&gt;Several days ago, my Operating System class assigned a lab, &lt;a href=&quot;https://github.com/OSH-2019/OSH-2019.github.io/tree/master/3&quot;&gt;to write a concurrent http server&lt;/a&gt;. I finally decide to complete this lab in C and using &lt;a href=&quot;http://man7.org/linux/man-pages/man7/epoll.7.html&quot;&gt;&lt;strong&gt;epoll&lt;/strong&gt;&lt;/a&gt; to implement I/O multiplexing. It turns out that epoll is really hard to use, especially in multithreaded environments. So I write this post to document some pitfalls while using epoll. The source code of the HTTP Server can be found at &lt;a href=&quot;https://github.com/kaleid-liner/epoll-web-server&quot;&gt;here&lt;/a&gt;. &lt;!--more--&gt;&lt;/p&gt;
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.0.0">Jekyll</generator><link href="https://kaleid-liner.github.io/feed.xml" rel="self" type="application/atom+xml" /><link href="https://kaleid-liner.github.io/" rel="alternate" type="text/html" /><updated>2019-12-11T10:30:03+00:00</updated><id>https://kaleid-liner.github.io/feed.xml</id><title type="html">KLBlog</title><subtitle>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.</subtitle><entry><title type="html">.NET Core Devirtualization Under the Hood</title><link href="https://kaleid-liner.github.io/blog/2019/12/11/devirt.html" rel="alternate" type="text/html" title=".NET Core Devirtualization Under the Hood" /><published>2019-12-11T00:00:00+00:00</published><updated>2019-12-11T00:00:00+00:00</updated><id>https://kaleid-liner.github.io/blog/2019/12/11/devirt</id><content type="html" xml:base="https://kaleid-liner.github.io/blog/2019/12/11/devirt.html">&lt;blockquote&gt;
+  &lt;p&gt;This post is based on a research report of one of my ongoing project. So it was written in Chinese. English version may be uploaded one day?&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;最近我在做 CoreCLR 相关的内容。这些天看到其中关于 devirt 内容，觉得还是挺有意思的。于是通过这篇 post 记录了下来。其中可能有谬误的地方，欢迎指出。&lt;/p&gt;
+
+&lt;p&gt;这篇文档会先介绍 C# 虚方法的调用方式，再介绍 C# 采用的 devirt 技术。在介绍的过程中，其中可能穿插一些你不太感兴趣的技术细节。我尽可能隐藏了这些技术细节，并在 &lt;a href=&quot;#further-reading&quot;&gt;Further reading&lt;/a&gt; 中留下与之相关的源码、issue、PR 或者 comment 的链接，如果你有兴趣可以深入去了解。&lt;/p&gt;
+
+&lt;h2 id=&quot;introduction&quot;&gt;Introduction&lt;/h2&gt;
+
+&lt;p&gt;对于几乎所有支持继承等 OOP 特性的语言，调用虚方法的额外消耗都是一件令人头疼的事情。许多时候，对于一些常被调用但实现简单的方法，调用产生的 overhead 甚至超过了函数体本身。于是，devirtualization 就成为了这些语言常见的优化。devirtualization，故名思义，即是将对虚方法的调用（一般是个 indirect call）转化为一个普通的调用，从而能达成减少调用消耗、给内联提供机会的目的。&lt;/p&gt;
+
+&lt;p&gt;无论是 C++ 还是 Java 都实现了这种优化。Java 中的 Devirtualization 尤其成熟，因为 Java 默认将所有方法视为虚方法，因此非常需要通过这种方式来提高效率。&lt;/p&gt;
+
+&lt;p&gt;而在 C# 中，Devirtualization 也十分重要。因为 C# 对虚方法调用的实现方式决定了其额外消耗更大。&lt;/p&gt;
+
+&lt;h2 id=&quot;c-virtual-call&quot;&gt;C# Virtual Call&lt;/h2&gt;
+
+&lt;h3 id=&quot;vtable&quot;&gt;VTable&lt;/h3&gt;
+
+&lt;p&gt;一般而言，我们知道，对于虚方法的调用，是通过虚方法表，也就是 vtable 实现的。编译器会在对应的类中增加一个 &lt;code class=&quot;highlighter-rouge&quot;&gt;vptr&lt;/code&gt; 的指针域，指向对应的 vtable，再通过 vtable 指向函数。如下：&lt;/p&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/img/posts/vtable.png&quot; alt=&quot;vtable&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;在 C# 中，虽然大致相同，但 C# 的设计者做了一个用时间换空间的 trade off。考虑到不同类可能其虚方法的实现是相同的（在 C# 中这种情况非常常见，并且一个类中可能有很多方法），为了节省空间，设计者增加了一个 &lt;code class=&quot;highlighter-rouge&quot;&gt;chunk&lt;/code&gt; 层。每个 vtable 中的指针实际指向的是一个个 chunk，这些 chunk 可以被不同的类共享。这些 chunk 中才是存的到方法的指针。&lt;/p&gt;
+
+&lt;p&gt;因此，一次对虚方法对调用会生成如下的汇编：&lt;/p&gt;
+
+&lt;pre&gt;&lt;code class=&quot;language-assembly&quot;&gt;000095 mov      rax, qword ptr [rcx]                 ; fetch method table
+000098 mov      rax, qword ptr [rax+72]              ; fetch proper chunk
+00009C call     qword ptr [rax+32]B:F():int:this     ; call indirect
+&lt;/code&gt;&lt;/pre&gt;
+
+&lt;p&gt;正因为如此，C# 调用虚方法的额外消耗更加大（增加了一次访存），也更有必要进行 devirtualize（以下用 devirt 指代）.&lt;/p&gt;
+
+&lt;p&gt;devirt 的另一个重要的意义在于，一个间接调用是无法内联的，如果一个调用能进行 devirt，并且该方法恰好也能内联，就能大幅提高性能。&lt;/p&gt;
+
+&lt;h3 id=&quot;virtual-stub-dispatch&quot;&gt;Virtual Stub Dispatch&lt;/h3&gt;
+
+&lt;p&gt;C# 除了经典的 VTable 之外，还支持一种叫 Virtual Stub Dispatch (VSD) 的 dispatch 方式。&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Virtual stub dispatching (VSD) is the technique of using stubs for virtual method invocations instead of the traditional virtual method table. In the past, interface dispatch required that interfaces had process-unique identifiers, and that every loaded interface was added to a global interface virtual table map.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;此种 dispatch 方式是为了解决 interface dispatch 的一些问题。目前来说，我虽然看懂了，但有点一知半解，更没信心在这里用简短的篇幅讲清楚。你可以去&lt;a href=&quot;https://github.com/dotnet/coreclr/blob/master/Documentation/botr/virtual-stub-dispatch.md&quot;&gt;官方文档&lt;/a&gt;查看详细的设计.&lt;/p&gt;
+
+&lt;p&gt;这种 dispatch 方式和我这里要讲的 devirt 相关的地方在于，这种方式也是一种 indirect call，并被用于 interface 中方法的调用。&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Note: 虽然我将之归于 virtual call，但传统意义上对类的虚方法调用还没有用上这种方式。 这种方式也可以用于一般类的虚方法的调用，但目前来说只用于 interface 中，虚方法调用仍保留传统的 vtable 方式。&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;h2 id=&quot;techniques&quot;&gt;Techniques&lt;/h2&gt;
+
+&lt;h3 id=&quot;known-exact-type-devirtualization&quot;&gt;Known Exact type devirtualization&lt;/h3&gt;
+
+&lt;p&gt;如果直接就知道对象的准确类型，当然就能直接调用对应的方法实现。例如：&lt;/p&gt;
+
+&lt;div class=&quot;language-c# highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;B&lt;/span&gt; 
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;virtual&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;Foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;m&quot;&gt;0x33&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;div class=&quot;language-c# highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;k&quot;&gt;new&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;B&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()).&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;F&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;这里 CoreCLR 能知道对象的准确类型就是 B，于是可以 devirt 为直接调用 &lt;code class=&quot;highlighter-rouge&quot;&gt;B::F&lt;/code&gt;。&lt;/p&gt;
+
+&lt;p&gt;另外一种重要情况是：&lt;/p&gt;
+
+&lt;div class=&quot;language-c# highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;B&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;static&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;B&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;BFactory&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;new&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;B&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;div class=&quot;language-c# highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;nf&quot;&gt;BFactory&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;().&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;Foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;在这里，一个很自然的想法是在调用的地方应该是不知道 &lt;code class=&quot;highlighter-rouge&quot;&gt;BFactory()&lt;/code&gt; 返回的对象的准确类型究竟是什么的，因为调用者不会知道 &lt;code class=&quot;highlighter-rouge&quot;&gt;BFactory&lt;/code&gt; 的方法实现。但是，如果对这种现象足够敏感，你可能很快就可以发现，&lt;code class=&quot;highlighter-rouge&quot;&gt;BFactory&lt;/code&gt; 是可以内联的，如果我们在内联之后进行 devirt，我们实际上就是对 &lt;code class=&quot;highlighter-rouge&quot;&gt;(new B()).Foo()&lt;/code&gt; 这样一段语句进行 devirt。和上面那个例子一样，其准确类型也很容易判断。&lt;/p&gt;
+
+&lt;p&gt;但我们知道，进行 devirt 的一个重要目的，就是使得 devirt 后的函数调用能够被内联，所以 devirt 这一步应该发生在 inline 之前。那么如何解决这个耦合的问题呢？其实非常简单，就是先 devirt，再 inline，inline 之后再跑一遍 devirt。CoreCLR 将第二次 devirt 叫做 Late Devirtualization。（当然，Late Devirt 生成的结果就不会再进行 devirt 了，因为一直递归下去就没完了，并且从效率上来说也不值得。目前官方在&lt;a href=&quot;https://github.com/dotnet/coreclr/issues/9908&quot;&gt;考虑改变这点&lt;/a&gt;，之后也可能会对 late devirt 产生的结果进行内联。）&lt;/p&gt;
+
+&lt;p&gt;因此这种优化实际上就会跑两遍。一步发生在 importation 阶段，一步发生在 morphing 阶段（inlining 之后）.&lt;/p&gt;
+
+&lt;h4 id=&quot;how-to-get-the-exact-type&quot;&gt;How to get the exact type?&lt;/h4&gt;
+
+&lt;p&gt;但实际情况肯定不会像上面那么简单，对象的准确类型不一定能知道。事实上，对于一个 &lt;code class=&quot;highlighter-rouge&quot;&gt;A[0].Foo()&lt;/code&gt;，CoreCLR 就永远不会有办法知道 &lt;code class=&quot;highlighter-rouge&quot;&gt;A[0]&lt;/code&gt; 的准确类型，因为数组中的对象很难去跟踪其类型信息。那么，CoreCLR 如何判断什么时候能知道其准确类型？又是如何获取其准确的类型呢？&lt;/p&gt;
+
+&lt;p&gt;能不能获取准确类型很大程度上取决于 CoreCLR 在运行的时候记录了多少类型信息。对于同一个对象，在不同地方，不同时间，能获取的类型信息是不同的，这些类型信息存储的地方也是不同的（这些不一致，一部分源于 CoreCLR 实现过程中的性能考虑，一部分则是 CoreCLR 类型跟踪设计的不合理，设计者也在考虑在之后进行改善）。&lt;/p&gt;
+
+&lt;p&gt;详细的细节实现在 &lt;code class=&quot;highlighter-rouge&quot;&gt;gtGetClassHandle&lt;/code&gt; 中。由于会对各种结点进行不同的处理，这些操作比较繁琐并且涉及技术细节，不适合在这里展开，具体可以参考实现。但我们可以看看一个例子。&lt;/p&gt;
+
+&lt;h4 id=&quot;an-example&quot;&gt;An Example&lt;/h4&gt;
+
+&lt;div class=&quot;language-c# highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;D&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;B&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;override&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;Foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+      	&lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;m&quot;&gt;0x34&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;div class=&quot;language-c# highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;n&quot;&gt;B&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;d&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;new&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;D&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;d&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;Foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;这里 &lt;code class=&quot;highlighter-rouge&quot;&gt;d&lt;/code&gt; 的准确类型是怎么知道的呢？（编译器并不会做静态分析来获取 &lt;code class=&quot;highlighter-rouge&quot;&gt;b&lt;/code&gt; 的准确类型）&lt;/p&gt;
+
+&lt;p&gt;我们先看看初步生成的 HIR：&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;STMT00000 (IL 0x000...  ???)
+               [000003] -A----------              *  ASG       ref   
+               [000002] D------N----              +--*  LCL_VAR   ref    V02 tmp1         
+               [000001] ------------              \--*  ALLOCOBJ  ref   
+               [000000] ------------                 \--*  CNS_INT(h) long   0x7ffc2b81a4c8 method
+Marked V02 as a single def local
+
+lvaSetClass: setting class for V02 to (00007FFC2B81A4C8) HelloWorld.D  [exact]
+ 06000004
+In Compiler::impImportCall: opcode is newobj, kind=0, callRetType is void, structSize is 0
+
+
+STMT00001 (IL   ???...  ???)
+               [000005] I-C-G-------              *  CALL      void   HelloWorld.D..ctor (exactContextHnd=0x00007FFC2B81A4C9)
+               [000004] ------------ this in rcx  \--*  LCL_VAR   ref    V02 tmp1 
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;在 HIR 中，&lt;code class=&quot;highlighter-rouge&quot;&gt;d&lt;/code&gt; 变量被表示为了一个 &lt;code class=&quot;highlighter-rouge&quot;&gt;LCL_VAR&lt;/code&gt; 结点（&lt;code class=&quot;highlighter-rouge&quot;&gt;LCL_VAR   ref    V02 tmp1&lt;/code&gt;）。对于 JIT 而言，显然不可能在 &lt;code class=&quot;highlighter-rouge&quot;&gt;GenTree&lt;/code&gt; 结点中存储 &lt;code class=&quot;highlighter-rouge&quot;&gt;LCL_VAR&lt;/code&gt; 的类信息。那么在哪存呢？事实上，在定义像 &lt;code class=&quot;highlighter-rouge&quot;&gt;d&lt;/code&gt; 这样一个 &lt;code class=&quot;highlighter-rouge&quot;&gt;LCL_VAR&lt;/code&gt; 并初始化时，会在局部变量表中创建一个新的条目。正是在这个局部变量表（&lt;code class=&quot;highlighter-rouge&quot;&gt;lvaTable&lt;/code&gt;）中存储了变量的类信息（class handle），并记录这个类信息是否是准确的（isExact）。设置类信息这一步通过 &lt;code class=&quot;highlighter-rouge&quot;&gt;lvaSetClass&lt;/code&gt; 完成（&lt;code class=&quot;highlighter-rouge&quot;&gt;lvaSetClass: setting class for V02 to (00007FFC2B81A4C8) HelloWorld.D  [exact]&lt;/code&gt;）。这样，在调用的地方，我们可以通过查找局部变量表，获取其类型，发现 &lt;code class=&quot;highlighter-rouge&quot;&gt;isExact&lt;/code&gt; 为真，于是可以进行 devirt.&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;impDevirtualizeCall: Trying to devirtualize virtual call:
+    class for 'this' is HelloWorld.D [exact] (attrib 20000000)
+    base method is HelloWorld.B::Foo
+    devirt to HelloWorld.D::Foo -- exact
+               [000007] --C-G-------              *  CALLV ind int    HelloWorld.B.Foo
+               [000006] ------------ this in rcx  \--*  LCL_VAR   ref    V02 tmp1         
+    exact; can devirtualize
+... after devirt...
+               [000007] --C-G-------              *  CALL nullcheck int    HelloWorld.D.Foo
+               [000006] ------------ this in rcx  \--*  LCL_VAR   ref    V02 tmp1         
+Devirtualized virtual call to HelloWorld.B:Foo; now direct call to HelloWorld.D:Foo [exact]
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;devirt 的结果是将 &lt;code class=&quot;highlighter-rouge&quot;&gt;CALLV ind&lt;/code&gt; 转化为一个 &lt;code class=&quot;highlighter-rouge&quot;&gt;CALL nullcheck&lt;/code&gt;。在这之后编译器还会做内联。（&lt;em&gt;由于 Exact Type 和 Sealed class/method devirt 是两种相对比较朴素的方式，我考虑不在这里放过多内容。有关 devirt 再进行内联的讨论我放在 &lt;a href=&quot;#guarded-aka-speculative-devirtualization&quot;&gt;Guarded devirt&lt;/a&gt; 中进行，下面的 Sealed 情形也会介绍的相对比较简单。&lt;/em&gt;）&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;如何生成类似于上面的 dump 输出？看这里 &lt;a href=&quot;https://github.com/dotnet/coreclr/blob/master/Documentation/building/viewing-jit-dumps.md&quot;&gt;viewing-jit-dumps&lt;/a&gt;.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;h3 id=&quot;sealed-classmethod-devirtualization&quot;&gt;Sealed class/method devirtualization&lt;/h3&gt;
+
+&lt;p&gt;另一种比较明显可以做 devirt 的情形是，如果调用的对象的类或者方法是 final (即 C# 中的 sealed) ，那么就可以知道，即使这个方法是 virtual 的，要么没有子类，要么子类不可能重写这个方法。&lt;/p&gt;
+
+&lt;p&gt;比如：&lt;/p&gt;
+
+&lt;div class=&quot;language-c# highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;B&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;virtual&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;Foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;m&quot;&gt;0x33&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;D&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;B&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;sealed&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;override&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;Foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;m&quot;&gt;0x34&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;sealed&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;DD&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;B&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;override&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;Foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;m&quot;&gt;0x35&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;div class=&quot;language-c# highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;c1&quot;&gt;// case 1&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;D&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[]&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;bs&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;new&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;D&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;m&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;bs&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;m&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;new&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;D&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;bs&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;m&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;].&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;Foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;// case 2&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;DD&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[]&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;ds&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;new&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;DD&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;m&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;ds&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;m&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;new&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;DD&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;ds&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;m&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;].&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;Foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;在上面两种情况下，都可以进行 devirt。第一种情况下，&lt;code class=&quot;highlighter-rouge&quot;&gt;D&lt;/code&gt; 的子类不能够重写 &lt;code class=&quot;highlighter-rouge&quot;&gt;Foo&lt;/code&gt; 方法，所以调用 &lt;code class=&quot;highlighter-rouge&quot;&gt;Foo&lt;/code&gt; 是 &lt;code class=&quot;highlighter-rouge&quot;&gt;D::Foo&lt;/code&gt;. 第二种情况下，&lt;code class=&quot;highlighter-rouge&quot;&gt;DD&lt;/code&gt; 不可能有子类，所以调用的 &lt;code class=&quot;highlighter-rouge&quot;&gt;Foo&lt;/code&gt; 一定是 &lt;code class=&quot;highlighter-rouge&quot;&gt;DD::Foo&lt;/code&gt;.&lt;/p&gt;
+
+&lt;h4 id=&quot;exception&quot;&gt;Exception&lt;/h4&gt;
+
+&lt;p&gt;上面的想法虽然非常自然（并且很朴素），但很遗憾仍然有一个例外。&lt;/p&gt;
+
+&lt;p&gt;如果我们有一个 &lt;code class=&quot;highlighter-rouge&quot;&gt;interface&lt;/code&gt; ，碰巧得到了一个方法是 &lt;code class=&quot;highlighter-rouge&quot;&gt;sealed&lt;/code&gt;，我们可以 devirt 吗？不一定。考虑这种情况：&lt;/p&gt;
+
+&lt;div class=&quot;language-c# highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;interface&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;IFoo&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;Foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;B&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;IFoo&lt;/span&gt;
+&lt;span class=&quot;c1&quot;&gt;// same as above&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;D&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;B&lt;/span&gt; 
+&lt;span class=&quot;c1&quot;&gt;// same as above&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;DD&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;D&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;,&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;IFoo&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;IFoo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;Foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;m&quot;&gt;0x35&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;此时我们发现，虽然 &lt;code class=&quot;highlighter-rouge&quot;&gt;D&lt;/code&gt; 中将 &lt;code class=&quot;highlighter-rouge&quot;&gt;Foo&lt;/code&gt; 标记为了 &lt;code class=&quot;highlighter-rouge&quot;&gt;sealed&lt;/code&gt;，但我们在 &lt;code class=&quot;highlighter-rouge&quot;&gt;DD&lt;/code&gt; 中仍能够通过实现类的方法来重写。&lt;/p&gt;
+
+&lt;p&gt;正是因为 interface 的种种不同，导致目前在 interface 的 devirt 上，CoreCLR 还表现得很差。&lt;/p&gt;
+
+&lt;h3 id=&quot;devirt-on-value-type&quot;&gt;Devirt on value type&lt;/h3&gt;
+
+&lt;p&gt;这个是对上面两种 devirt 的一个补充：在值类型上进行 devirt 会有一些特殊情况发生。&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Note: 这种特殊情况被描述成这样：“Make sure the right method entry point in invoked; virtual struct methods come in “boxed” and “unboxed” flavors.”  “Now have direct call to boxed entry point, looking for unboxed entry point”&lt;/p&gt;
+
+  &lt;p&gt;这里的 boxed entry point 和 unboxed entry point 是什么呢？官方文档中没有提及，我在 box 和 unbox 相关标准中也没有看到。经过一下搜索我找了这篇 post： &lt;a href=&quot;https://mattwarren.org/2017/08/02/A-look-at-the-internals-of-boxing-in-the-CLR/&quot;&gt;Internals of boxing&lt;/a&gt;. 我猜测该篇 post 中提到的 unboxing stub 应该指的就是这个东西。&lt;/p&gt;
+
+  &lt;p&gt;以下的测试样例和解释来自于那篇 post. 为了这个 post 的完整性我姑且加了进去。如果觉得我讲的不清楚，建议看一下原篇.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;C# 中分为引用类型和值类型，使用 &lt;code class=&quot;highlighter-rouge&quot;&gt;class&lt;/code&gt; 会得到引用类型，使用 &lt;code class=&quot;highlighter-rouge&quot;&gt;struct&lt;/code&gt; 会得到值类型， &lt;code class=&quot;highlighter-rouge&quot;&gt;int&lt;/code&gt;, &lt;code class=&quot;highlighter-rouge&quot;&gt;float&lt;/code&gt; 等的也是值类型。C# 中也有 boxing，会将栈上的值类型转化成堆中的 &lt;code class=&quot;highlighter-rouge&quot;&gt;object&lt;/code&gt; 类型。如果缺少前置知识，建议看一下 &lt;a href=&quot;https://docs.microsoft.com/en-us/dotnet/csharp/programming-guide/types/boxing-and-unboxing&quot;&gt;boxing-and-unboxing&lt;/a&gt;.&lt;/p&gt;
+
+&lt;p&gt;这里的特殊情况源于 C# 中，值类型可能会重写 &lt;code class=&quot;highlighter-rouge&quot;&gt;object&lt;/code&gt; 中的方法，比如 &lt;code class=&quot;highlighter-rouge&quot;&gt;ToString&lt;/code&gt;。在这种情况下，生成的方法表和平常的有所不同。我们看一下这个例子：&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;以下的测试样例和解释来自于这篇 post:  &lt;a href=&quot;https://mattwarren.org/2017/08/02/A-look-at-the-internals-of-boxing-in-the-CLR/&quot;&gt;Internals of boxing&lt;/a&gt;. 为了这个 post 的完整性我仍是加了进去。如果觉得我讲的不清楚，建议看一下原篇.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;div class=&quot;language-c# highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;MyStruct&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+	
+    &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;override&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;string&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;ToString&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;s&quot;&gt;&quot;Value = &quot;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;+&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;ToString&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;SD: MT::MethodIterator created for MyStruct (TestNamespace.MyStruct).
+   slot  0: MyStruct::ToString  0x000007FE41170C10 (slot =  0) (Unboxing Stub)
+   slot  1: System.ValueType::Equals  0x000007FEC1194078 (slot =  1) 
+   slot  2: System.ValueType::GetHashCode  0x000007FEC1194080 (slot =  2) 
+   slot  3: System.Object::Finalize  0x000007FEC14A30E0 (slot =  3) 
+   slot  5: MyStruct::ToString  0x000007FE41170C18 (slot =  4) 
+   &amp;lt;-- vtable ends here
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;我们发现，一件非常奇怪的事情是，这里有两个 &lt;code class=&quot;highlighter-rouge&quot;&gt;MyStruct::ToString&lt;/code&gt;. 其中，slot 5 中的 &lt;code class=&quot;highlighter-rouge&quot;&gt;MyStruct::ToString&lt;/code&gt; 才是正常 &lt;code class=&quot;highlighter-rouge&quot;&gt;override&lt;/code&gt; 后生成的方法。&lt;/p&gt;
+
+&lt;p&gt;那么 slot 0 中的是怎么回事呢？slot 0 中的 Unboxing stub 是个什么东西？&lt;/p&gt;
+
+&lt;p&gt;首先我们需要知道，对于 &lt;code class=&quot;highlighter-rouge&quot;&gt;object&lt;/code&gt; 而言，&lt;code class=&quot;highlighter-rouge&quot;&gt;this&lt;/code&gt; 指针指向的是堆中的一段内存。类和结构体不同的一点在于，类在存储数据前还要存储一段 &lt;code class=&quot;highlighter-rouge&quot;&gt;object header&lt;/code&gt; 和 &lt;code class=&quot;highlighter-rouge&quot;&gt;method table&lt;/code&gt;，而 &lt;code class=&quot;highlighter-rouge&quot;&gt;this&lt;/code&gt; 指向的是 &lt;code class=&quot;highlighter-rouge&quot;&gt;method table&lt;/code&gt; 开始的地方。但在 box 后的值上调用 &lt;code class=&quot;highlighter-rouge&quot;&gt;MyStruct::ToString&lt;/code&gt; 时，我们需要传进参数，这个参数应该是 &lt;code class=&quot;highlighter-rouge&quot;&gt;this&lt;/code&gt; 吗？&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;        +----------------------+
+        |     An instance      |
+        +----------------------+
+        | Header               |
+this -&amp;gt; | Method Table address |
+        | Field1               |
+        | FieldN               |
+        +----------------------+
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;然而，根据标准：&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;By contrast, instance and virtual methods of value types shall be coded to expect a managed pointer (see Partition I) to an unboxed instance of the value type.&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;p&gt;也就是说，我们需要传过去的参数应该是这样的指针：&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;        +----------------------+
+        |     An instance      |
+        +----------------------+
+        | Header               |
+        | Method Table address |
+this -&amp;gt; | Field1               |
+        | FieldN               |
+        +----------------------+
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;这个不一致，使得 override 的 &lt;code class=&quot;highlighter-rouge&quot;&gt;MyStruct::ToString&lt;/code&gt; (unboxed version)和 &lt;code class=&quot;highlighter-rouge&quot;&gt;MyStruct::ToString &lt;/code&gt;(boxed version) 是不同的，它们接受的参数都不同（虽然这被隐藏起来了）。于是 CoreCLR 为这个版本的 &lt;code class=&quot;highlighter-rouge&quot;&gt;MyStruct::ToString&lt;/code&gt; 生成了一个 slot 0.&lt;/p&gt;
+
+&lt;p&gt;让我们回到之前讨论的话题，这个“例外的情况”也就非常明显了：我们需要调用的不是 boxed 的版本，而是 unboxed 的版本。然而 devirt 后得到的是一个对 boxed 方法入口的直接调用，所以需要通过 &lt;code class=&quot;highlighter-rouge&quot;&gt;getUnboxedEntry&lt;/code&gt; 得到 unboxed 方法的入口。&lt;/p&gt;
+
+&lt;h3 id=&quot;guarded-aka-speculative-devirtualization&quot;&gt;Guarded (aka, speculative) devirtualization&lt;/h3&gt;
+
+&lt;p&gt;那么如果无法做上面的这些优化呢？事实上，由于跟踪的类信息很少并且在处理时常常有类信息的损失，所以无法做常规 devirt 的情形非常常见。在完成上述的一些优化后，devirt 成功率仍然非常低，在&lt;a href=&quot;https://github.com/dotnet/coreclr/issues/9908&quot;&gt;开发者的统计&lt;/a&gt;中，对于虚方法进行 devirt 的成功率只有 9.42%，在 interface 上进行 devirt 的成功率更是只有 2.23%.&lt;/p&gt;
+
+&lt;p&gt;这就是 Guarded devirtualization （以下用 GDv 指代）发挥作用的地方了。看见名字中的 “speculative” 大家应该就能想到，这种优化手段大概是靠猜。没错，就是靠猜。GDv 是常规 devirt 的一个 fallback，如果无法做常规的 devirt，才会进行 GDv。GDv 指的是这样一种优化：&lt;/p&gt;
+
+&lt;p&gt;它会将（这里 &lt;code class=&quot;highlighter-rouge&quot;&gt;foo&lt;/code&gt; 是一个虚方法）：&lt;/p&gt;
+
+&lt;div class=&quot;language-c# highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;n&quot;&gt;widget&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;转化为：&lt;/p&gt;
+
+&lt;div class=&quot;language-c# highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;widget&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;foo&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;A&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;A&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;widget&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;即在函数调用之前，进行一下猜测，猜测对象的准确类型是啥，如果猜测正确，就直接调用具体的方法，否则才进行一次虚方法调用（indirect call）。&lt;/p&gt;
+
+&lt;p&gt;但我们可以发现，就上面的代码而言，即使 widget 的实际类型（exact type）确实是 A，这么做也不会带来时间上的优化，还会增加代码大小并增加一次 if 判断。或许唯一的作用是方便 CPU 进行分支预测？但事实上，现代的 CPU 包含了 indirect call 的分支预测，因此，如果循环中一直调用 &lt;code class=&quot;highlighter-rouge&quot;&gt;foo&lt;/code&gt;，而 &lt;code class=&quot;highlighter-rouge&quot;&gt;widget&lt;/code&gt; 的实际类型基本保持一样，那么分支预测就会大幅提高效率。&lt;/p&gt;
+
+&lt;p&gt;例如，对这样一段代码测效率（摘自 GDv &lt;a href=&quot;https://github.com/dotnet/coreclr/blob/master/Documentation/design-docs/GuardedDevirtualization.md&quot;&gt;设计文档&lt;/a&gt;）：&lt;/p&gt;
+
+&lt;div class=&quot;language-c# highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;B&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;virtual&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;F&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;m&quot;&gt;33&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;  &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;D&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;B&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;override&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;F&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;m&quot;&gt;44&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;n&quot;&gt;B&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[]&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;arr&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;new&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;B&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;m&quot;&gt;10000&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+&lt;span class=&quot;n&quot;&gt;fill&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;arr&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;with&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;instances&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;of&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;B&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;or&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;D&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;foreach&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;B&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;b&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;in&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;arr&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;b&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;F&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;&lt;img src=&quot;/assets/img/posts/TwoClassesDevirt.jpg&quot; alt=&quot;TwoClassedDevirt&quot; /&gt;&lt;/p&gt;
+
+&lt;p&gt;可以发现，当数组中基本都是 &lt;code class=&quot;highlighter-rouge&quot;&gt;B&lt;/code&gt; 或 &lt;code class=&quot;highlighter-rouge&quot;&gt;D&lt;/code&gt; 时，分支预测命中率很高，因此效率很高。但一半 &lt;code class=&quot;highlighter-rouge&quot;&gt;B&lt;/code&gt; 或一半 &lt;code class=&quot;highlighter-rouge&quot;&gt;D&lt;/code&gt; 时，分支预测很难命中，因此效率较低。&lt;/p&gt;
+
+&lt;p&gt;既然 CPU 已经有针对 indirect call 的分支预测了，此种优化的意义何在呢？其实，这样做的主要作用是，可以方便函数内联。&lt;code class=&quot;highlighter-rouge&quot;&gt;A::foo()&lt;/code&gt; 这样的调用是可以内联的，而 &lt;code class=&quot;highlighter-rouge&quot;&gt;widget.foo()&lt;/code&gt; 这样的调用是无法内联的（虚函数调用的花费巨大的一个重要原因就是无法做一些在普通函数上可以做的优化）。因此，上述的代码可以进一步转化为：&lt;/p&gt;
+
+&lt;div class=&quot;language-c# highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;if&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;widget&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;foo&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;==&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;A&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;::&lt;/span&gt;&lt;span class=&quot;n&quot;&gt;foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;c1&quot;&gt;// body of A::foo&lt;/span&gt;
+&lt;span class=&quot;k&quot;&gt;else&lt;/span&gt;
+    &lt;span class=&quot;n&quot;&gt;widget&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;.&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;这样，即使最终调用了 &lt;code class=&quot;highlighter-rouge&quot;&gt;widge.foo()&lt;/code&gt; 也不过是多进行了一次 &lt;code class=&quot;highlighter-rouge&quot;&gt;cmp&lt;/code&gt; 判断。&lt;/p&gt;
+
+&lt;p&gt;事实上，在 CoreCLR 的实现中，GDv 中最后的一步就是进行内联。如果该方法本身就无法内联，CoreCLR 不会考虑对该调用做 GDv.&lt;/p&gt;
+
+&lt;h4 id=&quot;implementations&quot;&gt;Implementations&lt;/h4&gt;
+
+&lt;h5 id=&quot;importation-mark-potential-candidates&quot;&gt;Importation: Mark potential candidates&lt;/h5&gt;
+
+&lt;p&gt;在 import 阶段，会将可能可以进行 GDv 的方法进行标记，并留到后续的过程中再进行实际的转化。标记这一步实现于 &lt;code class=&quot;highlighter-rouge&quot;&gt;impDevirtualizeCall&lt;/code&gt; 中：如果无法确定变量的准确类型（exact type），或者该类型/方法不是 final 的（即无法进行一般意义上的 devirtualize），那么就会通过调用 &lt;code class=&quot;highlighter-rouge&quot;&gt;addGardedDevirtualizatoinCandidate&lt;/code&gt; 来尝试标记为 GDv 候选。&lt;/p&gt;
+
+&lt;p&gt;在 &lt;code class=&quot;highlighter-rouge&quot;&gt;addGuardedDevirtualizationCandidate&lt;/code&gt; 中，只要&lt;strong&gt;不是&lt;/strong&gt;以下几种情况之一：&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;方法本身不是 &lt;code class=&quot;highlighter-rouge&quot;&gt;virtual&lt;/code&gt; 的&lt;/li&gt;
+  &lt;li&gt;没有开启 GDv 优化选项&lt;/li&gt;
+  &lt;li&gt;在进行 prejit&lt;/li&gt;
+  &lt;li&gt;未开启优化&lt;/li&gt;
+  &lt;li&gt;调用者本身是 cold block（即做了这个优化对整体性能影响也不大）&lt;/li&gt;
+  &lt;li&gt;调用用到了 cookie &lt;!--&gt;TODO: what is call cookie?&lt;!--&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;就会进行标记，并保存调用的信息（&lt;code class=&quot;highlighter-rouge&quot;&gt;GuardedDevirtualizationCandidateInfo&lt;/code&gt;）.&lt;/p&gt;
+
+&lt;h5 id=&quot;importation-transform&quot;&gt;Importation: Transform&lt;/h5&gt;
+
+&lt;p&gt;第二步就是进行转化，这一步同样发生在 &lt;code class=&quot;highlighter-rouge&quot;&gt;import&lt;/code&gt;. 它将虚方法的调用转化为 &lt;code class=&quot;highlighter-rouge&quot;&gt;if .. then .. else .. &lt;/code&gt; 的结构。此步转化通过 &lt;code class=&quot;highlighter-rouge&quot;&gt;GuardedDevirtualizationTransformer::Run&lt;/code&gt; 完成。会通过 &lt;code class=&quot;highlighter-rouge&quot;&gt;CreateCheck&lt;/code&gt;, &lt;code class=&quot;highlighter-rouge&quot;&gt;CreateThen&lt;/code&gt;, &lt;code class=&quot;highlighter-rouge&quot;&gt;CreateElse&lt;/code&gt; 分别生成对应的 3 个 BasicBlock。其中完成 Devirtualize 的当然是 &lt;code class=&quot;highlighter-rouge&quot;&gt;CreateThen&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;如果通过了 if 的检测，进入了 then block 中，那么就相当于我们知道了该次调用的实际类型（在上面的例子中，&lt;code class=&quot;highlighter-rouge&quot;&gt;widget&lt;/code&gt; 就一定是 &lt;code class=&quot;highlighter-rouge&quot;&gt;A&lt;/code&gt; 类型），于是可以进行普通的 devirt 了。所以实现中将其标记为 A 类型，之后通过调用 上面提到过的 &lt;code class=&quot;highlighter-rouge&quot;&gt;impDevirtualizeCall&lt;/code&gt; 来实际进行 devirt。在这之后，我们将 devirt 后生成的 &lt;code class=&quot;highlighter-rouge&quot;&gt;call&lt;/code&gt; 节点（不再是 &lt;code class=&quot;highlighter-rouge&quot;&gt;calli&lt;/code&gt; 结点）标记为 inline candidate，交给后续过程进行 inline。&lt;/p&gt;
+
+&lt;h5 id=&quot;morphing-inline&quot;&gt;Morphing: Inline&lt;/h5&gt;
+
+&lt;p&gt;第三部就是进行内联，这一步发生在 Morphing 阶段。因为之前已经将其标记为 inline candidate，并且将其从间接调用(indirect call) 转化成了直接调用，所以对它的处理过程和内联其它方法是一样的。&lt;/p&gt;
+
+&lt;blockquote&gt;
+  &lt;p&gt;Importation? Morphing? 如果你尚不清楚 JIT 的各个阶段，看一下官方的设计文档 &lt;a href=&quot;https://github.com/dotnet/coreclr/blob/master/Documentation/botr/ryujit-overview.md#phases-of-ryujit&quot;&gt;RyuJIT Overview&lt;/a&gt;&lt;/p&gt;
+&lt;/blockquote&gt;
+
+&lt;h4 id=&quot;an-example-1&quot;&gt;An Example&lt;/h4&gt;
+
+&lt;p&gt;例如，对这样一个 C# 程序：&lt;/p&gt;
+
+&lt;div class=&quot;language-c# highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;B&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;virtual&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;Foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;m&quot;&gt;0x33&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;D&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;:&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;B&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;override&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;Foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;()&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;k&quot;&gt;return&lt;/span&gt; &lt;span class=&quot;m&quot;&gt;0x34&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+
+&lt;span class=&quot;k&quot;&gt;class&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;Program&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+    &lt;span class=&quot;k&quot;&gt;static&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;void&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;Main&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;(&lt;/span&gt;&lt;span class=&quot;kt&quot;&gt;string&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[]&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;args&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;)&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;B&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[]&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;bs&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;new&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;B&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;m&quot;&gt;1&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;];&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;bs&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;m&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;]&lt;/span&gt; &lt;span class=&quot;p&quot;&gt;=&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;new&lt;/span&gt; &lt;span class=&quot;nf&quot;&gt;B&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+        &lt;span class=&quot;n&quot;&gt;bs&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;[&lt;/span&gt;&lt;span class=&quot;m&quot;&gt;0&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;].&lt;/span&gt;&lt;span class=&quot;nf&quot;&gt;Foo&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;();&lt;/span&gt;
+    &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;我们预期的情况是对 &lt;code class=&quot;highlighter-rouge&quot;&gt;bs[0].Foo()&lt;/code&gt; 的调用会被转化为一个 &lt;code class=&quot;highlighter-rouge&quot;&gt;GuardedDevirtualize&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;上面的第三条语句最开始如下，由一个对数组的索引和 call ind 组成。&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;[000018] &amp;amp;-CXG-------              *  CALLV ind int    HelloWorld.B.Foo (exactContextHnd=0x00007FFC3912A329)
+[000017] R--XG------- this in rcx  \--*  INDEX     ref   
+[000005] ------------                 +--*  LCL_VAR   ref    V02 tmp1         
+[000016] ------------                 \--*  CNS_INT   int    0
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;第一步，jit 会尝试 devirt 该调用：&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;impDevirtualizeCall: Trying to devirtualize virtual call:
+    class for 'this' is HelloWorld.B (attrib 20000000)
+    base method is HelloWorld.B::Foo
+    devirt to HelloWorld.B::Foo -- inexact or not final
+               [000018] --CXG-------              *  CALLV ind int    HelloWorld.B.Foo
+               [000017] R--XG------- this in rcx  \--*  INDEX     ref   
+               [000005] ------------                 +--*  LCL_VAR   ref    V02 tmp1         
+               [000016] ------------                 \--*  CNS_INT   int    0
+    Class not final or exact, and method not final
+Marking call [000018] as guarded devirtualization candidate; will guess for class HelloWorld.B
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;由于 jit 不会跟踪数组中类的详细类型信息，所以无法得到类的实际类型。同时该方法也不是 &lt;code class=&quot;highlighter-rouge&quot;&gt;final&lt;/code&gt; 的，所以 得到输出 &lt;code class=&quot;highlighter-rouge&quot;&gt;Class not final or exact, and method not final&lt;/code&gt;，无法进行一般的 devirt。于是将其标记为 devirt candidate. (&lt;code class=&quot;highlighter-rouge&quot;&gt;Marking call [000018] as guarded devirtualization candidate&lt;/code&gt; )，并猜测该类型为 &lt;code class=&quot;highlighter-rouge&quot;&gt;B&lt;/code&gt;. 也就是说 &lt;code class=&quot;highlighter-rouge&quot;&gt;if (bs[0].Foo == B::foo)&lt;/code&gt;.&lt;/p&gt;
+
+&lt;p&gt;第二部，jit 将其进行转化：&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;*************** in fgTransformIndirectCalls(root)
+*** GuardedDevirtualization contemplating [000018]
+*** GuardedDevirtualization: transformingSTMT00004
+
+lvaGrabTemp returning 4 (V04 tmp3) (a long lifetime temp) called for guarded devirt return temp.
+Reworking call(s) to return value via a new temp V04
+Updating GT_RET_EXPR [000019] to refer to temp V04
+New Basic Block BB02 [0001] created.
+New Basic Block BB03 [0002] created.
+
+lvaGrabTemp returning 5 (V05 tmp4) called for guarded devirt this temp.
+New Basic Block BB04 [0003] created.
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;在 &lt;code class=&quot;highlighter-rouge&quot;&gt;fgTransformIndirectCalls&lt;/code&gt; 中，创建了三个新的 BB。然后在 then 中由于得到了实际类型，就可以直接 devirt 这次调用了：&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;impDevirtualizeCall: Trying to devirtualize virtual call:
+    class for 'this' is HelloWorld.B [exact] (attrib 20000000)
+    base method is HelloWorld.B::Foo
+    devirt to HelloWorld.B::Foo -- exact
+               [000038] I-CXG-------              *  CALLV ind int    HelloWorld.B.Foo
+               [000040] ------------ this in rcx  \--*  LCL_VAR   ref    V06 tmp5         
+    exact; can devirtualize
+... after devirt...
+               [000038] I-CXG-------              *  CALL nullcheck int    HelloWorld.B.Foo
+               [000040] ------------ this in rcx  \--*  LCL_VAR   ref    V06 tmp5         
+Devirtualized virtual call to HelloWorld.B:Foo; now direct call to HelloWorld.B:Foo [exact]
+New Basic Block BB05 [0004] created.
+Residual call [000018] moved to block BB05
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;经过内联之后，最终得到 HIR 如下。BB03 进行了 &lt;code class=&quot;highlighter-rouge&quot;&gt;if&lt;/code&gt; 判断。如果成功就跳到 BB04，否则跳到 BB05，&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;------------ BB03 [???..???) -&amp;gt; BB05 (cond), preds={} succs={BB04,BB05}
+***** BB03
+STMT00008 (IL   ???...  ???)
+[000034] ---X--------              *  JTRUE     void  
+[000033] ---X--------              \--*  NE        int   
+[000032] ------------                 +--*  CNS_INT(h) long   0x7ffc3912a328 class
+[000031] #--X--------                 \--*  IND       long  
+[000029] ------------                    \--*  LCL_VAR   ref    V05 tmp4  
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;在 BB04 中，我们发现，原本的一个调用 &lt;code class=&quot;highlighter-rouge&quot;&gt;CALL nullcheck&lt;/code&gt; 被直接内联了：&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;***** BB04
+STMT00011 (IL   ???...  ???)
+               [000043] -AC---------              *  ASG       int   
+               [000042] D------N----              +--*  LCL_VAR   int    V04 tmp3         
+               [000049] ------------              \--*  CNS_INT   int    51
+
+------------ BB05 [???..???), preds={} succs={BB02}
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;p&gt;而在 BB05 中，仍是一个 &lt;code class=&quot;highlighter-rouge&quot;&gt;CALLV ind&lt;/code&gt; 的间接调用。&lt;/p&gt;
+
+&lt;div class=&quot;highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;***** BB05
+STMT00012 (IL   ???...  ???)
+               [000045] -ACXG-------              *  ASG       int   
+               [000044] D------N----              +--*  LCL_VAR   int    V04 tmp3         
+               [000018] --CXG-------              \--*  CALLV ind int    HelloWorld.B.Foo
+               [000030] ------------ this in rcx     \--*  LCL_VAR   ref    V05 tmp4         
+
+------------ BB02 [016..017) (return), preds={} succs={}
+&lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
+
+&lt;h4 id=&quot;significance&quot;&gt;Significance&lt;/h4&gt;
+
+&lt;p&gt;我们可以发现，这种优化手段发挥作用的一个很重要的条件是：“命中率”要高，猜得要准。而和命中率紧密相关的条件是候选方案的个数。如果候选方案很少，比如只有一个类实现了某个 interface，这种情况下，Guarded devirt 肯定能猜中。然而，这种现象常见吗？&lt;/p&gt;
+
+&lt;p&gt;事实上，非常常见。在 CoreCLR 设计的初期还没有考虑这种优化手段，因为那时， C# 的继承，interface 使用还相对比较朴素。但随着 C# 发展，出现了一种非常常见的设计模式：shadow interface. interface 逐渐变得很大，甚至经常出现的情况是，在一个应用中，一个 interface 只对应一个类，整个类和 interface 的方法完全对应。（比如 WCF，通信的协议由 Interface 表示，在客户端和服务端都分别只有一个类实现对应的 interface）.&lt;/p&gt;
+
+&lt;p&gt;另一种情况就是在依赖注入（Dependency Injection, DI）这种设计模式中，依赖注入的类型参数一般都由 Interface 表示，而在一个应用中，注入的实例一般都同属于一个类。这种现象常见于 ASP.NET 中。&lt;/p&gt;
+
+&lt;p&gt;我们也可以发现，语言是随着使用者的习惯发展的。而人们对一门语言的使用习惯（idiomatic）又进一步促进了编译器的发展和优化思路的改变。&lt;/p&gt;
+
+&lt;h2 id=&quot;further-reading&quot;&gt;Further reading&lt;/h2&gt;
+
+&lt;h3 id=&quot;related-issues--pr&quot;&gt;Related Issues &amp;amp; PR&lt;/h3&gt;
+
+&lt;p&gt;读一下 issue 和 PR 中的 comment/ code review 可能对你有所帮助.&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/pull/21270&quot;&gt;Guarde Devirtualization&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/pull/10371&quot;&gt;Devirtualization exception: interface&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/pull/9230&quot;&gt;Simple Devirtualization&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/issues/9908&quot;&gt;Devirtulization roadmap&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3 id=&quot;official-docs&quot;&gt;Official docs&lt;/h3&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/blob/master/Documentation/botr/virtual-stub-dispatch.md&quot;&gt;Virtual Stub Dispatch&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/blob/master/Documentation/design-docs/GuardedDevirtualization.md&quot;&gt;Guarded Devirtualization of CoreCLR&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;http://hubicka.blogspot.com/2014/02/devirtualization-in-c-part-4-analyzing.html&quot;&gt;C++ Devirtualization&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/blob/master/Documentation/botr/ryujit-overview.md&quot;&gt;RyuJIT Overview&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;h3 id=&quot;jit-implementation-detail&quot;&gt;JIT Implementation Detail&lt;/h3&gt;
+
+&lt;p&gt;最后的选择：读源码。由于代码还在更新，所以链接的行数可能有差别（事实上由于行数有 1w+ 行所以是没法成功跳转的，你或许可以看一下链接的行数然后在本地看）&lt;/p&gt;
+
+&lt;p&gt;devirt 的实现主要是这样一个调用栈：&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/tree/master/src/jit/compiler.cpp#L4460&quot;&gt;Compiler::compCompile&lt;/a&gt;：完成 JIT 各个 phase 的顶层方法
+    &lt;ul&gt;
+      &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/tree/master/src/jit/flowgraph.cpp#L6940&quot;&gt;Compiler::fgImport&lt;/a&gt;: 完成 JIT import 阶段的顶层方法。devirt 主要在 import 阶段完成
+        &lt;ul&gt;
+          &lt;li&gt;Compiler::impImportCall: 实现对调用的 import
+            &lt;ul&gt;
+              &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/tree/master/src/jit/importer.cpp#19909&quot;&gt;Compiler::impDevirtualizeCall&lt;/a&gt;: 实现 devirt
+                &lt;ul&gt;
+                  &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/tree/master/src/jit/gentree.cpp#L16907&quot;&gt;Compiler::gtClassHandle&lt;/a&gt;: 获取类信息。包括类是否是 exact type.&lt;/li&gt;
+                  &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/tree/master/src/jit/importer.cpp#L20620&quot;&gt;Compiler::addGuardedDevirtualizationCandidate&lt;/a&gt;: 将调用标记为 GDv 的候选。在 &lt;code class=&quot;highlighter-rouge&quot;&gt;impDevirtualizeCall&lt;/code&gt; 中不会实际做 GDv&lt;/li&gt;
+                &lt;/ul&gt;
+              &lt;/li&gt;
+            &lt;/ul&gt;
+          &lt;/li&gt;
+        &lt;/ul&gt;
+      &lt;/li&gt;
+      &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/tree/master/src/jit/indirectcalltransformer.cpp#L809&quot;&gt;Compiler::fgTransformIndirectCalls&lt;/a&gt;: 将 indirect call 转化成 direct call. 这个完成对 GDv 对转化。
+        &lt;ul&gt;
+          &lt;li&gt;[omitted] 省略中间不重要的几层
+            &lt;ul&gt;
+              &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/tree/master/src/jit/indirectcalltransformer.cpp#L482&quot;&gt;IndirectCallTransformer::GuardedDevirtualizationTransformer::Run&lt;/a&gt;: GDv！
+                &lt;ul&gt;
+                  &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/tree/master/src/jit/indirectcalltransformer.cpp#L482&quot;&gt;IndirectCallTransformer::Transformer::Transform&lt;/a&gt;: 创建 GDv 的 &lt;code class=&quot;highlighter-rouge&quot;&gt;if ... then ... else ...&lt;/code&gt; 的三个 Basic Block. 然后做类似于更新权值之类的工作。&lt;/li&gt;
+                &lt;/ul&gt;
+              &lt;/li&gt;
+            &lt;/ul&gt;
+          &lt;/li&gt;
+        &lt;/ul&gt;
+      &lt;/li&gt;
+      &lt;li&gt;Compiler::fgMorph: 你只需要知道 Inline 是在 Morph 阶段做的就够了
+        &lt;ul&gt;
+          &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/tree/master/src/jit/flowgraph.cpp#L21919&quot;&gt;Compiler::fgInline&lt;/a&gt;：内联并做 late devirt
+            &lt;ul&gt;
+              &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/tree/master/src/jit/flowgraph.cpp#L22545&quot;&gt;Compiler::fgLateDevirtualization&lt;/a&gt;：调用下面的函数做 late devirt。在 late devirt 中不会做 GDv
+                &lt;ul&gt;
+                  &lt;li&gt;&lt;a href=&quot;https://github.com/dotnet/coreclr/tree/master/src/jit/importer.cpp#19909&quot;&gt;Compiler::impDevirtualizeCall&lt;/a&gt;：接受一个 &lt;code class=&quot;highlighter-rouge&quot;&gt;isLateDevirtualization&lt;/code&gt; 的参数&lt;/li&gt;
+                &lt;/ul&gt;
+              &lt;/li&gt;
+            &lt;/ul&gt;
+          &lt;/li&gt;
+        &lt;/ul&gt;
+      &lt;/li&gt;
+    &lt;/ul&gt;
+  &lt;/li&gt;
+&lt;/ul&gt;
+
+&lt;p&gt;这里我就不得不推荐一个同学安利给我的 &lt;a href=&quot;https://www.sourcetrail.com&quot;&gt;sourcetrail&lt;/a&gt; 这个工具。读代码，整体把握代码结构，静态索引之类的确实好用，就 MAC 版本的来看颜值也不错。在读这种大型代码的时候确实帮了不少忙。更关键的是，开源+免费。&lt;/p&gt;
+
+&lt;h3 id=&quot;other-references&quot;&gt;Other references&lt;/h3&gt;
+
+&lt;p&gt;这里有一些我参考的博客和 stack overflow 回答.&lt;/p&gt;
+
+&lt;ul&gt;
+  &lt;li&gt;&lt;a href=&quot;https://mattwarren.org/2017/08/02/A-look-at-the-internals-of-boxing-in-the-CLR/&quot;&gt;Internals of boxing&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://alexandrnikitin.github.io/blog/dotnet-generics-under-the-hood/#net-memory-layout&quot;&gt;.NET Memory Layout&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;http://hubicka.blogspot.com/2014/02/devirtualization-in-c-part-4-analyzing.html&quot;&gt;C++ Devirtualization&lt;/a&gt;&lt;/li&gt;
+  &lt;li&gt;&lt;a href=&quot;https://stackoverflow.com/questions/5494807/how-clr-works-when-invoking-a-method-of-a-struct&quot;&gt;Stackoverflow: method invocation on a struct&lt;/a&gt;&lt;/li&gt;
+&lt;/ul&gt;</content><author><name></name></author><category term="dotnet" /><category term="devirtualization" /><summary type="html">对于几乎所有支持继承等 OOP 特性的语言，调用虚方法的额外消耗都是一件令人头疼的事情。许多时候，对于一些常被调用但实现简单的方法，调用产生的 overhead 甚至超过了函数体本身……而在 C# 中，Devirtualization 也十分重要。因为 C# 对虚方法调用的实现方式决定了其额外消耗更大。这篇文档会先介绍 C# 虚方法的调用方式，再介绍 C# 采用的 devirt 技术。</summary></entry><entry><title type="html">Concurrent HTTP Server with Epoll</title><link href="https://kaleid-liner.github.io/blog/2019/06/02/epoll-web-server.html" rel="alternate" type="text/html" title="Concurrent HTTP Server with Epoll" /><published>2019-06-02T00:00:00+00:00</published><updated>2019-06-02T00:00:00+00:00</updated><id>https://kaleid-liner.github.io/blog/2019/06/02/epoll-web-server</id><content type="html" xml:base="https://kaleid-liner.github.io/blog/2019/06/02/epoll-web-server.html">&lt;p&gt;Several days ago, my Operating System class assigned a lab, &lt;a href=&quot;https://github.com/OSH-2019/OSH-2019.github.io/tree/master/3&quot;&gt;to write a concurrent http server&lt;/a&gt;. I finally decide to complete this lab in C and using &lt;a href=&quot;http://man7.org/linux/man-pages/man7/epoll.7.html&quot;&gt;&lt;strong&gt;epoll&lt;/strong&gt;&lt;/a&gt; to implement I/O multiplexing. It turns out that epoll is really hard to use, especially in multithreaded environments. So I write this post to document some pitfalls while using epoll. The source code of the HTTP Server can be found at &lt;a href=&quot;https://github.com/kaleid-liner/epoll-web-server&quot;&gt;here&lt;/a&gt;. &lt;!--more--&gt;&lt;/p&gt;
 
 &lt;p&gt;The epoll API monitors multiple file descriptors to see if I/O is possible on any of them. To understand epoll, I recommend &lt;a href=&quot;https://medium.com/@copyconstruct/the-method-to-epolls-madness-d9d2d6378642&quot;&gt;this post&lt;/a&gt;, a well-written article that explains low-level details of epoll thoroughly and differentiates between level-triggered and edge-triggered mode.&lt;/p&gt;
 

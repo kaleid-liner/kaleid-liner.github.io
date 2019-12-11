@@ -1,4 +1,4 @@
-@import "native.css";
+@import "monokai.css";
 
 * {
     box-sizing: border-box;
@@ -186,7 +186,7 @@ body {
 .post-content,
 .post-nav {
     padding: 2% 3%;
-    font-size: 1.2em;
+    font-size: 1.1rem;
 }
 
 @media (min-width: 576px) {

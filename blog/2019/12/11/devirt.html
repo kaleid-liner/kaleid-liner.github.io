@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en-US">
+    <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+        <link rel="stylesheet" href="/assets/css/styles.css">
+        <link rel="stylesheet" href="//use.fontawesome.com/releases/v5.11.2/css/all.css">
+        <script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
+        <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+        <title>.NET Core Devirtualization Under the Hood</title>
+    </head>
+    <body>
+        <div class="wrap main">
+        <header class="site-header">
+            <nav class="navbar navbar-expand-lg navbar-light bg-light">
+                <a class="navbar-brand" href="/">
+                    <img class="avatar" src="/assets/img/avatar.png">
+                </a>
+                <a class="navbar-brand mr-auto" href="/">
+                KLBlog</a>
+                <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarContent" aria-controls="navbarContent" aria-expanded="false" aria-label="Toggle navigation">
+                    <span class="navbar-toggler-icon"></span>
+                </button>
+                <div class="collapse navbar-collapse" id="navbarContent">
+                    <ul class="navbar-nav ml-auto">
+                        <li class="nav-item">
+                            <a class="nav-link" title="Blog" href="/blog/">
+                            Blog</a>
+                        </li>
+                        
+
+                         
+                            
+                            
+                         
+                            
+                            <li class="nav-item">
+                                <a class="nav-link" title="About" href="/about/">
+                                    About</a>
+                            </li>
+                            
+                            
+                         
+                            
+                            
+                         
+                            
+                            
+                         
+                            
+                            
+                         
+                            
+                            <li class="nav-item">
+                                <a class="nav-link" title="Portfolio" href="/portfolio/">
+                                    Portfolio</a>
+                            </li>
+                            
+                            
+                         
+                            
+                            
+                         
+                            
+                            <li class="nav-item">
+                                <a class="nav-link" title="Search" href="/search/">
+                                    <i class="fas fa-search"></i>
+                                    </a>
+                            </li>
+                            
+                            
+                         
+                            
+                            
+                        
+                    </ul>
+                </div>
+            </nav>
+        </header>
+
+        <article>
+    <header>
+        <div class="page-hero" 
+            style="background-image: url('/assets/img/features/under_the_hood.jpg');">
+            <h1 class="post-title">.NET Core Devirtualization Under the Hood</h1>
+            
+            
+
+<p class="post-info"><i class="fas fa-calendar-alt"></i> Dec 11, 2019
+    &nbsp;&nbsp;
+    <i class="fas fa-clock"></i> 15 minutes read</p>
+        </div>
+    </header>
+
+    <section id="content" class="post-content">
+        <blockquote>
+  <p>This post is based on a research report of one of my ongoing project. So it was written in Chinese. English version may be uploaded one day?</p>
+</blockquote>
+
+<p>最近我在做 CoreCLR 相关的内容。这些天看到其中关于 devirt 内容，觉得还是挺有意思的。于是通过这篇 post 记录了下来。其中可能有谬误的地方，欢迎指出。</p>
+
+<p>这篇文档会先介绍 C# 虚方法的调用方式，再介绍 C# 采用的 devirt 技术。在介绍的过程中，其中可能穿插一些你不太感兴趣的技术细节。我尽可能隐藏了这些技术细节，并在 <a href="#further-reading">Further reading</a> 中留下与之相关的源码、issue、PR 或者 comment 的链接，如果你有兴趣可以深入去了解。</p>
+
+<h2 id="introduction">Introduction</h2>
+
+<p>对于几乎所有支持继承等 OOP 特性的语言，调用虚方法的额外消耗都是一件令人头疼的事情。许多时候，对于一些常被调用但实现简单的方法，调用产生的 overhead 甚至超过了函数体本身。于是，devirtualization 就成为了这些语言常见的优化。devirtualization，故名思义，即是将对虚方法的调用（一般是个 indirect call）转化为一个普通的调用，从而能达成减少调用消耗、给内联提供机会的目的。</p>
+
+<p>无论是 C++ 还是 Java 都实现了这种优化。Java 中的 Devirtualization 尤其成熟，因为 Java 默认将所有方法视为虚方法，因此非常需要通过这种方式来提高效率。</p>
+
+<p>而在 C# 中，Devirtualization 也十分重要。因为 C# 对虚方法调用的实现方式决定了其额外消耗更大。</p>
+
+<h2 id="c-virtual-call">C# Virtual Call</h2>
+
+<h3 id="vtable">VTable</h3>
+
+<p>一般而言，我们知道，对于虚方法的调用，是通过虚方法表，也就是 vtable 实现的。编译器会在对应的类中增加一个 <code class="highlighter-rouge">vptr</code> 的指针域，指向对应的 vtable，再通过 vtable 指向函数。如下：</p>
+
+<p><img src="/assets/img/posts/vtable.png" alt="vtable" /></p>
+
+<p>在 C# 中，虽然大致相同，但 C# 的设计者做了一个用时间换空间的 trade off。考虑到不同类可能其虚方法的实现是相同的（在 C# 中这种情况非常常见，并且一个类中可能有很多方法），为了节省空间，设计者增加了一个 <code class="highlighter-rouge">chunk</code> 层。每个 vtable 中的指针实际指向的是一个个 chunk，这些 chunk 可以被不同的类共享。这些 chunk 中才是存的到方法的指针。</p>
+
+<p>因此，一次对虚方法对调用会生成如下的汇编：</p>
+
+<pre><code class="language-assembly">000095 mov      rax, qword ptr [rcx]                 ; fetch method table
+000098 mov      rax, qword ptr [rax+72]              ; fetch proper chunk
+00009C call     qword ptr [rax+32]B:F():int:this     ; call indirect
+</code></pre>
+
+<p>正因为如此，C# 调用虚方法的额外消耗更加大（增加了一次访存），也更有必要进行 devirtualize（以下用 devirt 指代）.</p>
+
+<p>devirt 的另一个重要的意义在于，一个间接调用是无法内联的，如果一个调用能进行 devirt，并且该方法恰好也能内联，就能大幅提高性能。</p>
+
+<h3 id="virtual-stub-dispatch">Virtual Stub Dispatch</h3>
+
+<p>C# 除了经典的 VTable 之外，还支持一种叫 Virtual Stub Dispatch (VSD) 的 dispatch 方式。</p>
+
+<blockquote>
+  <p>Virtual stub dispatching (VSD) is the technique of using stubs for virtual method invocations instead of the traditional virtual method table. In the past, interface dispatch required that interfaces had process-unique identifiers, and that every loaded interface was added to a global interface virtual table map.</p>
+</blockquote>
+
+<p>此种 dispatch 方式是为了解决 interface dispatch 的一些问题。目前来说，我虽然看懂了，但有点一知半解，更没信心在这里用简短的篇幅讲清楚。你可以去<a href="https://github.com/dotnet/coreclr/blob/master/Documentation/botr/virtual-stub-dispatch.md">官方文档</a>查看详细的设计.</p>
+
+<p>这种 dispatch 方式和我这里要讲的 devirt 相关的地方在于，这种方式也是一种 indirect call，并被用于 interface 中方法的调用。</p>
+
+<blockquote>
+  <p>Note: 虽然我将之归于 virtual call，但传统意义上对类的虚方法调用还没有用上这种方式。 这种方式也可以用于一般类的虚方法的调用，但目前来说只用于 interface 中，虚方法调用仍保留传统的 vtable 方式。</p>
+</blockquote>
+
+<h2 id="techniques">Techniques</h2>
+
+<h3 id="known-exact-type-devirtualization">Known Exact type devirtualization</h3>
+
+<p>如果直接就知道对象的准确类型，当然就能直接调用对应的方法实现。例如：</p>
+
+<div class="language-c# highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">B</span> 
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">virtual</span> <span class="kt">int</span> <span class="nf">Foo</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="m">0x33</span><span class="p">;</span> <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<div class="language-c# highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="p">(</span><span class="k">new</span> <span class="nf">B</span><span class="p">()).</span><span class="nf">F</span><span class="p">();</span>
+</code></pre></div></div>
+
+<p>这里 CoreCLR 能知道对象的准确类型就是 B，于是可以 devirt 为直接调用 <code class="highlighter-rouge">B::F</code>。</p>
+
+<p>另外一种重要情况是：</p>
+
+<div class="language-c# highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">B</span>
+<span class="p">{</span>
+    <span class="k">static</span> <span class="k">public</span> <span class="n">B</span> <span class="nf">BFactory</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="k">new</span> <span class="nf">B</span><span class="p">();</span> <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<div class="language-c# highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="nf">BFactory</span><span class="p">().</span><span class="nf">Foo</span><span class="p">();</span>
+</code></pre></div></div>
+
+<p>在这里，一个很自然的想法是在调用的地方应该是不知道 <code class="highlighter-rouge">BFactory()</code> 返回的对象的准确类型究竟是什么的，因为调用者不会知道 <code class="highlighter-rouge">BFactory</code> 的方法实现。但是，如果对这种现象足够敏感，你可能很快就可以发现，<code class="highlighter-rouge">BFactory</code> 是可以内联的，如果我们在内联之后进行 devirt，我们实际上就是对 <code class="highlighter-rouge">(new B()).Foo()</code> 这样一段语句进行 devirt。和上面那个例子一样，其准确类型也很容易判断。</p>
+
+<p>但我们知道，进行 devirt 的一个重要目的，就是使得 devirt 后的函数调用能够被内联，所以 devirt 这一步应该发生在 inline 之前。那么如何解决这个耦合的问题呢？其实非常简单，就是先 devirt，再 inline，inline 之后再跑一遍 devirt。CoreCLR 将第二次 devirt 叫做 Late Devirtualization。（当然，Late Devirt 生成的结果就不会再进行 devirt 了，因为一直递归下去就没完了，并且从效率上来说也不值得。目前官方在<a href="https://github.com/dotnet/coreclr/issues/9908">考虑改变这点</a>，之后也可能会对 late devirt 产生的结果进行内联。）</p>
+
+<p>因此这种优化实际上就会跑两遍。一步发生在 importation 阶段，一步发生在 morphing 阶段（inlining 之后）.</p>
+
+<h4 id="how-to-get-the-exact-type">How to get the exact type?</h4>
+
+<p>但实际情况肯定不会像上面那么简单，对象的准确类型不一定能知道。事实上，对于一个 <code class="highlighter-rouge">A[0].Foo()</code>，CoreCLR 就永远不会有办法知道 <code class="highlighter-rouge">A[0]</code> 的准确类型，因为数组中的对象很难去跟踪其类型信息。那么，CoreCLR 如何判断什么时候能知道其准确类型？又是如何获取其准确的类型呢？</p>
+
+<p>能不能获取准确类型很大程度上取决于 CoreCLR 在运行的时候记录了多少类型信息。对于同一个对象，在不同地方，不同时间，能获取的类型信息是不同的，这些类型信息存储的地方也是不同的（这些不一致，一部分源于 CoreCLR 实现过程中的性能考虑，一部分则是 CoreCLR 类型跟踪设计的不合理，设计者也在考虑在之后进行改善）。</p>
+
+<p>详细的细节实现在 <code class="highlighter-rouge">gtGetClassHandle</code> 中。由于会对各种结点进行不同的处理，这些操作比较繁琐并且涉及技术细节，不适合在这里展开，具体可以参考实现。但我们可以看看一个例子。</p>
+
+<h4 id="an-example">An Example</h4>
+
+<div class="language-c# highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">D</span> <span class="p">:</span> <span class="n">B</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">override</span> <span class="kt">int</span> <span class="nf">Foo</span><span class="p">()</span>
+    <span class="p">{</span>
+      	<span class="k">return</span> <span class="m">0x34</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<div class="language-c# highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">B</span> <span class="n">d</span> <span class="p">=</span> <span class="k">new</span> <span class="nf">D</span><span class="p">();</span>
+<span class="n">d</span><span class="p">.</span><span class="nf">Foo</span><span class="p">();</span>
+</code></pre></div></div>
+
+<p>这里 <code class="highlighter-rouge">d</code> 的准确类型是怎么知道的呢？（编译器并不会做静态分析来获取 <code class="highlighter-rouge">b</code> 的准确类型）</p>
+
+<p>我们先看看初步生成的 HIR：</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>STMT00000 (IL 0x000...  ???)
+               [000003] -A----------              *  ASG       ref   
+               [000002] D------N----              +--*  LCL_VAR   ref    V02 tmp1         
+               [000001] ------------              \--*  ALLOCOBJ  ref   
+               [000000] ------------                 \--*  CNS_INT(h) long   0x7ffc2b81a4c8 method
+Marked V02 as a single def local
+
+lvaSetClass: setting class for V02 to (00007FFC2B81A4C8) HelloWorld.D  [exact]
+ 06000004
+In Compiler::impImportCall: opcode is newobj, kind=0, callRetType is void, structSize is 0
+
+
+STMT00001 (IL   ???...  ???)
+               [000005] I-C-G-------              *  CALL      void   HelloWorld.D..ctor (exactContextHnd=0x00007FFC2B81A4C9)
+               [000004] ------------ this in rcx  \--*  LCL_VAR   ref    V02 tmp1 
+</code></pre></div></div>
+
+<p>在 HIR 中，<code class="highlighter-rouge">d</code> 变量被表示为了一个 <code class="highlighter-rouge">LCL_VAR</code> 结点（<code class="highlighter-rouge">LCL_VAR   ref    V02 tmp1</code>）。对于 JIT 而言，显然不可能在 <code class="highlighter-rouge">GenTree</code> 结点中存储 <code class="highlighter-rouge">LCL_VAR</code> 的类信息。那么在哪存呢？事实上，在定义像 <code class="highlighter-rouge">d</code> 这样一个 <code class="highlighter-rouge">LCL_VAR</code> 并初始化时，会在局部变量表中创建一个新的条目。正是在这个局部变量表（<code class="highlighter-rouge">lvaTable</code>）中存储了变量的类信息（class handle），并记录这个类信息是否是准确的（isExact）。设置类信息这一步通过 <code class="highlighter-rouge">lvaSetClass</code> 完成（<code class="highlighter-rouge">lvaSetClass: setting class for V02 to (00007FFC2B81A4C8) HelloWorld.D  [exact]</code>）。这样，在调用的地方，我们可以通过查找局部变量表，获取其类型，发现 <code class="highlighter-rouge">isExact</code> 为真，于是可以进行 devirt.</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>impDevirtualizeCall: Trying to devirtualize virtual call:
+    class for 'this' is HelloWorld.D [exact] (attrib 20000000)
+    base method is HelloWorld.B::Foo
+    devirt to HelloWorld.D::Foo -- exact
+               [000007] --C-G-------              *  CALLV ind int    HelloWorld.B.Foo
+               [000006] ------------ this in rcx  \--*  LCL_VAR   ref    V02 tmp1         
+    exact; can devirtualize
+... after devirt...
+               [000007] --C-G-------              *  CALL nullcheck int    HelloWorld.D.Foo
+               [000006] ------------ this in rcx  \--*  LCL_VAR   ref    V02 tmp1         
+Devirtualized virtual call to HelloWorld.B:Foo; now direct call to HelloWorld.D:Foo [exact]
+</code></pre></div></div>
+
+<p>devirt 的结果是将 <code class="highlighter-rouge">CALLV ind</code> 转化为一个 <code class="highlighter-rouge">CALL nullcheck</code>。在这之后编译器还会做内联。（<em>由于 Exact Type 和 Sealed class/method devirt 是两种相对比较朴素的方式，我考虑不在这里放过多内容。有关 devirt 再进行内联的讨论我放在 <a href="#guarded-aka-speculative-devirtualization">Guarded devirt</a> 中进行，下面的 Sealed 情形也会介绍的相对比较简单。</em>）</p>
+
+<blockquote>
+  <p>如何生成类似于上面的 dump 输出？看这里 <a href="https://github.com/dotnet/coreclr/blob/master/Documentation/building/viewing-jit-dumps.md">viewing-jit-dumps</a>.</p>
+</blockquote>
+
+<h3 id="sealed-classmethod-devirtualization">Sealed class/method devirtualization</h3>
+
+<p>另一种比较明显可以做 devirt 的情形是，如果调用的对象的类或者方法是 final (即 C# 中的 sealed) ，那么就可以知道，即使这个方法是 virtual 的，要么没有子类，要么子类不可能重写这个方法。</p>
+
+<p>比如：</p>
+
+<div class="language-c# highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">B</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">virtual</span> <span class="kt">int</span> <span class="nf">Foo</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="m">0x33</span><span class="p">;</span> <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">class</span> <span class="nc">D</span> <span class="p">:</span> <span class="n">B</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">sealed</span> <span class="k">override</span> <span class="kt">int</span> <span class="nf">Foo</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="m">0x34</span><span class="p">;</span> <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">sealed</span> <span class="k">class</span> <span class="nc">DD</span> <span class="p">:</span> <span class="n">B</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">override</span> <span class="kt">int</span> <span class="nf">Foo</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="m">0x35</span><span class="p">;</span> <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<div class="language-c# highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="c1">// case 1</span>
+<span class="n">D</span><span class="p">[]</span> <span class="n">bs</span> <span class="p">=</span> <span class="k">new</span> <span class="n">D</span><span class="p">[</span><span class="m">1</span><span class="p">];</span>
+<span class="n">bs</span><span class="p">[</span><span class="m">0</span><span class="p">]</span> <span class="p">=</span> <span class="k">new</span> <span class="nf">D</span><span class="p">();</span>
+<span class="n">bs</span><span class="p">[</span><span class="m">0</span><span class="p">].</span><span class="nf">Foo</span><span class="p">();</span>
+<span class="c1">// case 2</span>
+<span class="n">DD</span><span class="p">[]</span> <span class="n">ds</span> <span class="p">=</span> <span class="k">new</span> <span class="n">DD</span><span class="p">[</span><span class="m">1</span><span class="p">];</span>
+<span class="n">ds</span><span class="p">[</span><span class="m">0</span><span class="p">]</span> <span class="p">=</span> <span class="k">new</span> <span class="nf">DD</span><span class="p">();</span>
+<span class="n">ds</span><span class="p">[</span><span class="m">0</span><span class="p">].</span><span class="nf">Foo</span><span class="p">();</span>
+</code></pre></div></div>
+
+<p>在上面两种情况下，都可以进行 devirt。第一种情况下，<code class="highlighter-rouge">D</code> 的子类不能够重写 <code class="highlighter-rouge">Foo</code> 方法，所以调用 <code class="highlighter-rouge">Foo</code> 是 <code class="highlighter-rouge">D::Foo</code>. 第二种情况下，<code class="highlighter-rouge">DD</code> 不可能有子类，所以调用的 <code class="highlighter-rouge">Foo</code> 一定是 <code class="highlighter-rouge">DD::Foo</code>.</p>
+
+<h4 id="exception">Exception</h4>
+
+<p>上面的想法虽然非常自然（并且很朴素），但很遗憾仍然有一个例外。</p>
+
+<p>如果我们有一个 <code class="highlighter-rouge">interface</code> ，碰巧得到了一个方法是 <code class="highlighter-rouge">sealed</code>，我们可以 devirt 吗？不一定。考虑这种情况：</p>
+
+<div class="language-c# highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">interface</span> <span class="nc">IFoo</span>
+<span class="p">{</span>
+    <span class="kt">int</span> <span class="nf">Foo</span><span class="p">();</span>
+<span class="p">}</span>
+
+<span class="k">class</span> <span class="nc">B</span> <span class="p">:</span> <span class="n">IFoo</span>
+<span class="c1">// same as above</span>
+
+<span class="k">class</span> <span class="nc">D</span> <span class="p">:</span> <span class="n">B</span> 
+<span class="c1">// same as above</span>
+
+<span class="k">class</span> <span class="nc">DD</span> <span class="p">:</span> <span class="n">D</span><span class="p">,</span> <span class="n">IFoo</span>
+<span class="p">{</span>
+    <span class="kt">int</span> <span class="n">IFoo</span><span class="p">.</span><span class="nf">Foo</span><span class="p">()</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="m">0x35</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>此时我们发现，虽然 <code class="highlighter-rouge">D</code> 中将 <code class="highlighter-rouge">Foo</code> 标记为了 <code class="highlighter-rouge">sealed</code>，但我们在 <code class="highlighter-rouge">DD</code> 中仍能够通过实现类的方法来重写。</p>
+
+<p>正是因为 interface 的种种不同，导致目前在 interface 的 devirt 上，CoreCLR 还表现得很差。</p>
+
+<h3 id="devirt-on-value-type">Devirt on value type</h3>
+
+<p>这个是对上面两种 devirt 的一个补充：在值类型上进行 devirt 会有一些特殊情况发生。</p>
+
+<blockquote>
+  <p>Note: 这种特殊情况被描述成这样：“Make sure the right method entry point in invoked; virtual struct methods come in “boxed” and “unboxed” flavors.”  “Now have direct call to boxed entry point, looking for unboxed entry point”</p>
+
+  <p>这里的 boxed entry point 和 unboxed entry point 是什么呢？官方文档中没有提及，我在 box 和 unbox 相关标准中也没有看到。经过一下搜索我找了这篇 post： <a href="https://mattwarren.org/2017/08/02/A-look-at-the-internals-of-boxing-in-the-CLR/">Internals of boxing</a>. 我猜测该篇 post 中提到的 unboxing stub 应该指的就是这个东西。</p>
+
+  <p>以下的测试样例和解释来自于那篇 post. 为了这个 post 的完整性我姑且加了进去。如果觉得我讲的不清楚，建议看一下原篇.</p>
+</blockquote>
+
+<p>C# 中分为引用类型和值类型，使用 <code class="highlighter-rouge">class</code> 会得到引用类型，使用 <code class="highlighter-rouge">struct</code> 会得到值类型， <code class="highlighter-rouge">int</code>, <code class="highlighter-rouge">float</code> 等的也是值类型。C# 中也有 boxing，会将栈上的值类型转化成堆中的 <code class="highlighter-rouge">object</code> 类型。如果缺少前置知识，建议看一下 <a href="https://docs.microsoft.com/en-us/dotnet/csharp/programming-guide/types/boxing-and-unboxing">boxing-and-unboxing</a>.</p>
+
+<p>这里的特殊情况源于 C# 中，值类型可能会重写 <code class="highlighter-rouge">object</code> 中的方法，比如 <code class="highlighter-rouge">ToString</code>。在这种情况下，生成的方法表和平常的有所不同。我们看一下这个例子：</p>
+
+<blockquote>
+  <p>以下的测试样例和解释来自于这篇 post:  <a href="https://mattwarren.org/2017/08/02/A-look-at-the-internals-of-boxing-in-the-CLR/">Internals of boxing</a>. 为了这个 post 的完整性我仍是加了进去。如果觉得我讲的不清楚，建议看一下原篇.</p>
+</blockquote>
+
+<div class="language-c# highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">public</span> <span class="k">struct</span> <span class="nc">MyStruct</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="kt">int</span> <span class="n">Value</span><span class="p">;</span>
+	
+    <span class="k">public</span> <span class="k">override</span> <span class="kt">string</span> <span class="nf">ToString</span><span class="p">()</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="s">"Value = "</span> <span class="p">+</span> <span class="n">Value</span><span class="p">.</span><span class="nf">ToString</span><span class="p">();</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>SD: MT::MethodIterator created for MyStruct (TestNamespace.MyStruct).
+   slot  0: MyStruct::ToString  0x000007FE41170C10 (slot =  0) (Unboxing Stub)
+   slot  1: System.ValueType::Equals  0x000007FEC1194078 (slot =  1) 
+   slot  2: System.ValueType::GetHashCode  0x000007FEC1194080 (slot =  2) 
+   slot  3: System.Object::Finalize  0x000007FEC14A30E0 (slot =  3) 
+   slot  5: MyStruct::ToString  0x000007FE41170C18 (slot =  4) 
+   &lt;-- vtable ends here
+</code></pre></div></div>
+
+<p>我们发现，一件非常奇怪的事情是，这里有两个 <code class="highlighter-rouge">MyStruct::ToString</code>. 其中，slot 5 中的 <code class="highlighter-rouge">MyStruct::ToString</code> 才是正常 <code class="highlighter-rouge">override</code> 后生成的方法。</p>
+
+<p>那么 slot 0 中的是怎么回事呢？slot 0 中的 Unboxing stub 是个什么东西？</p>
+
+<p>首先我们需要知道，对于 <code class="highlighter-rouge">object</code> 而言，<code class="highlighter-rouge">this</code> 指针指向的是堆中的一段内存。类和结构体不同的一点在于，类在存储数据前还要存储一段 <code class="highlighter-rouge">object header</code> 和 <code class="highlighter-rouge">method table</code>，而 <code class="highlighter-rouge">this</code> 指向的是 <code class="highlighter-rouge">method table</code> 开始的地方。但在 box 后的值上调用 <code class="highlighter-rouge">MyStruct::ToString</code> 时，我们需要传进参数，这个参数应该是 <code class="highlighter-rouge">this</code> 吗？</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>        +----------------------+
+        |     An instance      |
+        +----------------------+
+        | Header               |
+this -&gt; | Method Table address |
+        | Field1               |
+        | FieldN               |
+        +----------------------+
+</code></pre></div></div>
+
+<p>然而，根据标准：</p>
+
+<blockquote>
+  <p>By contrast, instance and virtual methods of value types shall be coded to expect a managed pointer (see Partition I) to an unboxed instance of the value type.</p>
+</blockquote>
+
+<p>也就是说，我们需要传过去的参数应该是这样的指针：</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>        +----------------------+
+        |     An instance      |
+        +----------------------+
+        | Header               |
+        | Method Table address |
+this -&gt; | Field1               |
+        | FieldN               |
+        +----------------------+
+</code></pre></div></div>
+
+<p>这个不一致，使得 override 的 <code class="highlighter-rouge">MyStruct::ToString</code> (unboxed version)和 <code class="highlighter-rouge">MyStruct::ToString </code>(boxed version) 是不同的，它们接受的参数都不同（虽然这被隐藏起来了）。于是 CoreCLR 为这个版本的 <code class="highlighter-rouge">MyStruct::ToString</code> 生成了一个 slot 0.</p>
+
+<p>让我们回到之前讨论的话题，这个“例外的情况”也就非常明显了：我们需要调用的不是 boxed 的版本，而是 unboxed 的版本。然而 devirt 后得到的是一个对 boxed 方法入口的直接调用，所以需要通过 <code class="highlighter-rouge">getUnboxedEntry</code> 得到 unboxed 方法的入口。</p>
+
+<h3 id="guarded-aka-speculative-devirtualization">Guarded (aka, speculative) devirtualization</h3>
+
+<p>那么如果无法做上面的这些优化呢？事实上，由于跟踪的类信息很少并且在处理时常常有类信息的损失，所以无法做常规 devirt 的情形非常常见。在完成上述的一些优化后，devirt 成功率仍然非常低，在<a href="https://github.com/dotnet/coreclr/issues/9908">开发者的统计</a>中，对于虚方法进行 devirt 的成功率只有 9.42%，在 interface 上进行 devirt 的成功率更是只有 2.23%.</p>
+
+<p>这就是 Guarded devirtualization （以下用 GDv 指代）发挥作用的地方了。看见名字中的 “speculative” 大家应该就能想到，这种优化手段大概是靠猜。没错，就是靠猜。GDv 是常规 devirt 的一个 fallback，如果无法做常规的 devirt，才会进行 GDv。GDv 指的是这样一种优化：</p>
+
+<p>它会将（这里 <code class="highlighter-rouge">foo</code> 是一个虚方法）：</p>
+
+<div class="language-c# highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="n">widget</span><span class="p">.</span><span class="nf">foo</span><span class="p">();</span>
+</code></pre></div></div>
+
+<p>转化为：</p>
+
+<div class="language-c# highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">if</span> <span class="p">(</span><span class="n">widget</span><span class="p">.</span><span class="n">foo</span> <span class="p">==</span> <span class="n">A</span><span class="p">::</span><span class="n">foo</span><span class="p">)</span>
+    <span class="n">A</span><span class="p">::</span><span class="nf">foo</span><span class="p">();</span>
+<span class="k">else</span>
+    <span class="n">widget</span><span class="p">.</span><span class="nf">foo</span><span class="p">();</span>
+</code></pre></div></div>
+
+<p>即在函数调用之前，进行一下猜测，猜测对象的准确类型是啥，如果猜测正确，就直接调用具体的方法，否则才进行一次虚方法调用（indirect call）。</p>
+
+<p>但我们可以发现，就上面的代码而言，即使 widget 的实际类型（exact type）确实是 A，这么做也不会带来时间上的优化，还会增加代码大小并增加一次 if 判断。或许唯一的作用是方便 CPU 进行分支预测？但事实上，现代的 CPU 包含了 indirect call 的分支预测，因此，如果循环中一直调用 <code class="highlighter-rouge">foo</code>，而 <code class="highlighter-rouge">widget</code> 的实际类型基本保持一样，那么分支预测就会大幅提高效率。</p>
+
+<p>例如，对这样一段代码测效率（摘自 GDv <a href="https://github.com/dotnet/coreclr/blob/master/Documentation/design-docs/GuardedDevirtualization.md">设计文档</a>）：</p>
+
+<div class="language-c# highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">class</span> <span class="nc">B</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">virtual</span> <span class="kt">int</span> <span class="nf">F</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="m">33</span><span class="p">;</span>  <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">class</span> <span class="nc">D</span> <span class="p">:</span> <span class="n">B</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">override</span> <span class="kt">int</span> <span class="nf">F</span><span class="p">()</span> <span class="p">{</span> <span class="k">return</span> <span class="m">44</span><span class="p">;</span> <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="n">B</span><span class="p">[]</span> <span class="n">arr</span> <span class="p">=</span> <span class="k">new</span> <span class="n">B</span><span class="p">[</span><span class="m">10000</span><span class="p">];</span>
+<span class="n">fill</span> <span class="n">arr</span> <span class="n">with</span> <span class="n">instances</span> <span class="n">of</span> <span class="n">B</span> <span class="n">or</span> <span class="n">D</span><span class="p">;</span>
+<span class="k">foreach</span> <span class="p">(</span><span class="n">B</span> <span class="n">b</span> <span class="k">in</span> <span class="n">arr</span><span class="p">)</span>
+<span class="p">{</span>
+    <span class="n">b</span><span class="p">.</span><span class="nf">F</span><span class="p">()</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p><img src="/assets/img/posts/TwoClassesDevirt.jpg" alt="TwoClassedDevirt" /></p>
+
+<p>可以发现，当数组中基本都是 <code class="highlighter-rouge">B</code> 或 <code class="highlighter-rouge">D</code> 时，分支预测命中率很高，因此效率很高。但一半 <code class="highlighter-rouge">B</code> 或一半 <code class="highlighter-rouge">D</code> 时，分支预测很难命中，因此效率较低。</p>
+
+<p>既然 CPU 已经有针对 indirect call 的分支预测了，此种优化的意义何在呢？其实，这样做的主要作用是，可以方便函数内联。<code class="highlighter-rouge">A::foo()</code> 这样的调用是可以内联的，而 <code class="highlighter-rouge">widget.foo()</code> 这样的调用是无法内联的（虚函数调用的花费巨大的一个重要原因就是无法做一些在普通函数上可以做的优化）。因此，上述的代码可以进一步转化为：</p>
+
+<div class="language-c# highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">if</span> <span class="p">(</span><span class="n">widget</span><span class="p">.</span><span class="n">foo</span> <span class="p">==</span> <span class="n">A</span><span class="p">::</span><span class="n">foo</span><span class="p">)</span>
+    <span class="c1">// body of A::foo</span>
+<span class="k">else</span>
+    <span class="n">widget</span><span class="p">.</span><span class="nf">foo</span><span class="p">();</span>
+</code></pre></div></div>
+
+<p>这样，即使最终调用了 <code class="highlighter-rouge">widge.foo()</code> 也不过是多进行了一次 <code class="highlighter-rouge">cmp</code> 判断。</p>
+
+<p>事实上，在 CoreCLR 的实现中，GDv 中最后的一步就是进行内联。如果该方法本身就无法内联，CoreCLR 不会考虑对该调用做 GDv.</p>
+
+<h4 id="implementations">Implementations</h4>
+
+<h5 id="importation-mark-potential-candidates">Importation: Mark potential candidates</h5>
+
+<p>在 import 阶段，会将可能可以进行 GDv 的方法进行标记，并留到后续的过程中再进行实际的转化。标记这一步实现于 <code class="highlighter-rouge">impDevirtualizeCall</code> 中：如果无法确定变量的准确类型（exact type），或者该类型/方法不是 final 的（即无法进行一般意义上的 devirtualize），那么就会通过调用 <code class="highlighter-rouge">addGardedDevirtualizatoinCandidate</code> 来尝试标记为 GDv 候选。</p>
+
+<p>在 <code class="highlighter-rouge">addGuardedDevirtualizationCandidate</code> 中，只要<strong>不是</strong>以下几种情况之一：</p>
+
+<ul>
+  <li>方法本身不是 <code class="highlighter-rouge">virtual</code> 的</li>
+  <li>没有开启 GDv 优化选项</li>
+  <li>在进行 prejit</li>
+  <li>未开启优化</li>
+  <li>调用者本身是 cold block（即做了这个优化对整体性能影响也不大）</li>
+  <li>调用用到了 cookie <!-->TODO: what is call cookie?<!--></li>
+</ul>
+
+<p>就会进行标记，并保存调用的信息（<code class="highlighter-rouge">GuardedDevirtualizationCandidateInfo</code>）.</p>
+
+<h5 id="importation-transform">Importation: Transform</h5>
+
+<p>第二步就是进行转化，这一步同样发生在 <code class="highlighter-rouge">import</code>. 它将虚方法的调用转化为 <code class="highlighter-rouge">if .. then .. else .. </code> 的结构。此步转化通过 <code class="highlighter-rouge">GuardedDevirtualizationTransformer::Run</code> 完成。会通过 <code class="highlighter-rouge">CreateCheck</code>, <code class="highlighter-rouge">CreateThen</code>, <code class="highlighter-rouge">CreateElse</code> 分别生成对应的 3 个 BasicBlock。其中完成 Devirtualize 的当然是 <code class="highlighter-rouge">CreateThen</code>.</p>
+
+<p>如果通过了 if 的检测，进入了 then block 中，那么就相当于我们知道了该次调用的实际类型（在上面的例子中，<code class="highlighter-rouge">widget</code> 就一定是 <code class="highlighter-rouge">A</code> 类型），于是可以进行普通的 devirt 了。所以实现中将其标记为 A 类型，之后通过调用 上面提到过的 <code class="highlighter-rouge">impDevirtualizeCall</code> 来实际进行 devirt。在这之后，我们将 devirt 后生成的 <code class="highlighter-rouge">call</code> 节点（不再是 <code class="highlighter-rouge">calli</code> 结点）标记为 inline candidate，交给后续过程进行 inline。</p>
+
+<h5 id="morphing-inline">Morphing: Inline</h5>
+
+<p>第三部就是进行内联，这一步发生在 Morphing 阶段。因为之前已经将其标记为 inline candidate，并且将其从间接调用(indirect call) 转化成了直接调用，所以对它的处理过程和内联其它方法是一样的。</p>
+
+<blockquote>
+  <p>Importation? Morphing? 如果你尚不清楚 JIT 的各个阶段，看一下官方的设计文档 <a href="https://github.com/dotnet/coreclr/blob/master/Documentation/botr/ryujit-overview.md#phases-of-ryujit">RyuJIT Overview</a></p>
+</blockquote>
+
+<h4 id="an-example-1">An Example</h4>
+
+<p>例如，对这样一个 C# 程序：</p>
+
+<div class="language-c# highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">public</span> <span class="k">class</span> <span class="nc">B</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">virtual</span> <span class="kt">int</span> <span class="nf">Foo</span><span class="p">()</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="m">0x33</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">public</span> <span class="k">class</span> <span class="nc">D</span> <span class="p">:</span> <span class="n">B</span>
+<span class="p">{</span>
+    <span class="k">public</span> <span class="k">override</span> <span class="kt">int</span> <span class="nf">Foo</span><span class="p">()</span>
+    <span class="p">{</span>
+        <span class="k">return</span> <span class="m">0x34</span><span class="p">;</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+
+<span class="k">class</span> <span class="nc">Program</span>
+<span class="p">{</span>
+    <span class="k">static</span> <span class="k">void</span> <span class="nf">Main</span><span class="p">(</span><span class="kt">string</span><span class="p">[]</span> <span class="n">args</span><span class="p">)</span>
+    <span class="p">{</span>
+        <span class="n">B</span><span class="p">[]</span> <span class="n">bs</span> <span class="p">=</span> <span class="k">new</span> <span class="n">B</span><span class="p">[</span><span class="m">1</span><span class="p">];</span>
+        <span class="n">bs</span><span class="p">[</span><span class="m">0</span><span class="p">]</span> <span class="p">=</span> <span class="k">new</span> <span class="nf">B</span><span class="p">();</span>
+        <span class="n">bs</span><span class="p">[</span><span class="m">0</span><span class="p">].</span><span class="nf">Foo</span><span class="p">();</span>
+    <span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div></div>
+
+<p>我们预期的情况是对 <code class="highlighter-rouge">bs[0].Foo()</code> 的调用会被转化为一个 <code class="highlighter-rouge">GuardedDevirtualize</code>.</p>
+
+<p>上面的第三条语句最开始如下，由一个对数组的索引和 call ind 组成。</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>[000018] &amp;-CXG-------              *  CALLV ind int    HelloWorld.B.Foo (exactContextHnd=0x00007FFC3912A329)
+[000017] R--XG------- this in rcx  \--*  INDEX     ref   
+[000005] ------------                 +--*  LCL_VAR   ref    V02 tmp1         
+[000016] ------------                 \--*  CNS_INT   int    0
+</code></pre></div></div>
+
+<p>第一步，jit 会尝试 devirt 该调用：</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>impDevirtualizeCall: Trying to devirtualize virtual call:
+    class for 'this' is HelloWorld.B (attrib 20000000)
+    base method is HelloWorld.B::Foo
+    devirt to HelloWorld.B::Foo -- inexact or not final
+               [000018] --CXG-------              *  CALLV ind int    HelloWorld.B.Foo
+               [000017] R--XG------- this in rcx  \--*  INDEX     ref   
+               [000005] ------------                 +--*  LCL_VAR   ref    V02 tmp1         
+               [000016] ------------                 \--*  CNS_INT   int    0
+    Class not final or exact, and method not final
+Marking call [000018] as guarded devirtualization candidate; will guess for class HelloWorld.B
+</code></pre></div></div>
+
+<p>由于 jit 不会跟踪数组中类的详细类型信息，所以无法得到类的实际类型。同时该方法也不是 <code class="highlighter-rouge">final</code> 的，所以 得到输出 <code class="highlighter-rouge">Class not final or exact, and method not final</code>，无法进行一般的 devirt。于是将其标记为 devirt candidate. (<code class="highlighter-rouge">Marking call [000018] as guarded devirtualization candidate</code> )，并猜测该类型为 <code class="highlighter-rouge">B</code>. 也就是说 <code class="highlighter-rouge">if (bs[0].Foo == B::foo)</code>.</p>
+
+<p>第二部，jit 将其进行转化：</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>*************** in fgTransformIndirectCalls(root)
+*** GuardedDevirtualization contemplating [000018]
+*** GuardedDevirtualization: transformingSTMT00004
+
+lvaGrabTemp returning 4 (V04 tmp3) (a long lifetime temp) called for guarded devirt return temp.
+Reworking call(s) to return value via a new temp V04
+Updating GT_RET_EXPR [000019] to refer to temp V04
+New Basic Block BB02 [0001] created.
+New Basic Block BB03 [0002] created.
+
+lvaGrabTemp returning 5 (V05 tmp4) called for guarded devirt this temp.
+New Basic Block BB04 [0003] created.
+</code></pre></div></div>
+
+<p>在 <code class="highlighter-rouge">fgTransformIndirectCalls</code> 中，创建了三个新的 BB。然后在 then 中由于得到了实际类型，就可以直接 devirt 这次调用了：</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>impDevirtualizeCall: Trying to devirtualize virtual call:
+    class for 'this' is HelloWorld.B [exact] (attrib 20000000)
+    base method is HelloWorld.B::Foo
+    devirt to HelloWorld.B::Foo -- exact
+               [000038] I-CXG-------              *  CALLV ind int    HelloWorld.B.Foo
+               [000040] ------------ this in rcx  \--*  LCL_VAR   ref    V06 tmp5         
+    exact; can devirtualize
+... after devirt...
+               [000038] I-CXG-------              *  CALL nullcheck int    HelloWorld.B.Foo
+               [000040] ------------ this in rcx  \--*  LCL_VAR   ref    V06 tmp5         
+Devirtualized virtual call to HelloWorld.B:Foo; now direct call to HelloWorld.B:Foo [exact]
+New Basic Block BB05 [0004] created.
+Residual call [000018] moved to block BB05
+</code></pre></div></div>
+
+<p>经过内联之后，最终得到 HIR 如下。BB03 进行了 <code class="highlighter-rouge">if</code> 判断。如果成功就跳到 BB04，否则跳到 BB05，</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>------------ BB03 [???..???) -&gt; BB05 (cond), preds={} succs={BB04,BB05}
+***** BB03
+STMT00008 (IL   ???...  ???)
+[000034] ---X--------              *  JTRUE     void  
+[000033] ---X--------              \--*  NE        int   
+[000032] ------------                 +--*  CNS_INT(h) long   0x7ffc3912a328 class
+[000031] #--X--------                 \--*  IND       long  
+[000029] ------------                    \--*  LCL_VAR   ref    V05 tmp4  
+</code></pre></div></div>
+
+<p>在 BB04 中，我们发现，原本的一个调用 <code class="highlighter-rouge">CALL nullcheck</code> 被直接内联了：</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>***** BB04
+STMT00011 (IL   ???...  ???)
+               [000043] -AC---------              *  ASG       int   
+               [000042] D------N----              +--*  LCL_VAR   int    V04 tmp3         
+               [000049] ------------              \--*  CNS_INT   int    51
+
+------------ BB05 [???..???), preds={} succs={BB02}
+</code></pre></div></div>
+
+<p>而在 BB05 中，仍是一个 <code class="highlighter-rouge">CALLV ind</code> 的间接调用。</p>
+
+<div class="highlighter-rouge"><div class="highlight"><pre class="highlight"><code>***** BB05
+STMT00012 (IL   ???...  ???)
+               [000045] -ACXG-------              *  ASG       int   
+               [000044] D------N----              +--*  LCL_VAR   int    V04 tmp3         
+               [000018] --CXG-------              \--*  CALLV ind int    HelloWorld.B.Foo
+               [000030] ------------ this in rcx     \--*  LCL_VAR   ref    V05 tmp4         
+
+------------ BB02 [016..017) (return), preds={} succs={}
+</code></pre></div></div>
+
+<h4 id="significance">Significance</h4>
+
+<p>我们可以发现，这种优化手段发挥作用的一个很重要的条件是：“命中率”要高，猜得要准。而和命中率紧密相关的条件是候选方案的个数。如果候选方案很少，比如只有一个类实现了某个 interface，这种情况下，Guarded devirt 肯定能猜中。然而，这种现象常见吗？</p>
+
+<p>事实上，非常常见。在 CoreCLR 设计的初期还没有考虑这种优化手段，因为那时， C# 的继承，interface 使用还相对比较朴素。但随着 C# 发展，出现了一种非常常见的设计模式：shadow interface. interface 逐渐变得很大，甚至经常出现的情况是，在一个应用中，一个 interface 只对应一个类，整个类和 interface 的方法完全对应。（比如 WCF，通信的协议由 Interface 表示，在客户端和服务端都分别只有一个类实现对应的 interface）.</p>
+
+<p>另一种情况就是在依赖注入（Dependency Injection, DI）这种设计模式中，依赖注入的类型参数一般都由 Interface 表示，而在一个应用中，注入的实例一般都同属于一个类。这种现象常见于 ASP.NET 中。</p>
+
+<p>我们也可以发现，语言是随着使用者的习惯发展的。而人们对一门语言的使用习惯（idiomatic）又进一步促进了编译器的发展和优化思路的改变。</p>
+
+<h2 id="further-reading">Further reading</h2>
+
+<h3 id="related-issues--pr">Related Issues &amp; PR</h3>
+
+<p>读一下 issue 和 PR 中的 comment/ code review 可能对你有所帮助.</p>
+
+<ul>
+  <li><a href="https://github.com/dotnet/coreclr/pull/21270">Guarde Devirtualization</a></li>
+  <li><a href="https://github.com/dotnet/coreclr/pull/10371">Devirtualization exception: interface</a></li>
+  <li><a href="https://github.com/dotnet/coreclr/pull/9230">Simple Devirtualization</a></li>
+  <li><a href="https://github.com/dotnet/coreclr/issues/9908">Devirtulization roadmap</a></li>
+</ul>
+
+<h3 id="official-docs">Official docs</h3>
+
+<ul>
+  <li><a href="https://github.com/dotnet/coreclr/blob/master/Documentation/botr/virtual-stub-dispatch.md">Virtual Stub Dispatch</a></li>
+  <li><a href="https://github.com/dotnet/coreclr/blob/master/Documentation/design-docs/GuardedDevirtualization.md">Guarded Devirtualization of CoreCLR</a></li>
+  <li><a href="http://hubicka.blogspot.com/2014/02/devirtualization-in-c-part-4-analyzing.html">C++ Devirtualization</a></li>
+  <li><a href="https://github.com/dotnet/coreclr/blob/master/Documentation/botr/ryujit-overview.md">RyuJIT Overview</a></li>
+</ul>
+
+<h3 id="jit-implementation-detail">JIT Implementation Detail</h3>
+
+<p>最后的选择：读源码。由于代码还在更新，所以链接的行数可能有差别（事实上由于行数有 1w+ 行所以是没法成功跳转的，你或许可以看一下链接的行数然后在本地看）</p>
+
+<p>devirt 的实现主要是这样一个调用栈：</p>
+
+<ul>
+  <li><a href="https://github.com/dotnet/coreclr/tree/master/src/jit/compiler.cpp#L4460">Compiler::compCompile</a>：完成 JIT 各个 phase 的顶层方法
+    <ul>
+      <li><a href="https://github.com/dotnet/coreclr/tree/master/src/jit/flowgraph.cpp#L6940">Compiler::fgImport</a>: 完成 JIT import 阶段的顶层方法。devirt 主要在 import 阶段完成
+        <ul>
+          <li>Compiler::impImportCall: 实现对调用的 import
+            <ul>
+              <li><a href="https://github.com/dotnet/coreclr/tree/master/src/jit/importer.cpp#19909">Compiler::impDevirtualizeCall</a>: 实现 devirt
+                <ul>
+                  <li><a href="https://github.com/dotnet/coreclr/tree/master/src/jit/gentree.cpp#L16907">Compiler::gtClassHandle</a>: 获取类信息。包括类是否是 exact type.</li>
+                  <li><a href="https://github.com/dotnet/coreclr/tree/master/src/jit/importer.cpp#L20620">Compiler::addGuardedDevirtualizationCandidate</a>: 将调用标记为 GDv 的候选。在 <code class="highlighter-rouge">impDevirtualizeCall</code> 中不会实际做 GDv</li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+      <li><a href="https://github.com/dotnet/coreclr/tree/master/src/jit/indirectcalltransformer.cpp#L809">Compiler::fgTransformIndirectCalls</a>: 将 indirect call 转化成 direct call. 这个完成对 GDv 对转化。
+        <ul>
+          <li>[omitted] 省略中间不重要的几层
+            <ul>
+              <li><a href="https://github.com/dotnet/coreclr/tree/master/src/jit/indirectcalltransformer.cpp#L482">IndirectCallTransformer::GuardedDevirtualizationTransformer::Run</a>: GDv！
+                <ul>
+                  <li><a href="https://github.com/dotnet/coreclr/tree/master/src/jit/indirectcalltransformer.cpp#L482">IndirectCallTransformer::Transformer::Transform</a>: 创建 GDv 的 <code class="highlighter-rouge">if ... then ... else ...</code> 的三个 Basic Block. 然后做类似于更新权值之类的工作。</li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+      <li>Compiler::fgMorph: 你只需要知道 Inline 是在 Morph 阶段做的就够了
+        <ul>
+          <li><a href="https://github.com/dotnet/coreclr/tree/master/src/jit/flowgraph.cpp#L21919">Compiler::fgInline</a>：内联并做 late devirt
+            <ul>
+              <li><a href="https://github.com/dotnet/coreclr/tree/master/src/jit/flowgraph.cpp#L22545">Compiler::fgLateDevirtualization</a>：调用下面的函数做 late devirt。在 late devirt 中不会做 GDv
+                <ul>
+                  <li><a href="https://github.com/dotnet/coreclr/tree/master/src/jit/importer.cpp#19909">Compiler::impDevirtualizeCall</a>：接受一个 <code class="highlighter-rouge">isLateDevirtualization</code> 的参数</li>
+                </ul>
+              </li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+    </ul>
+  </li>
+</ul>
+
+<p>这里我就不得不推荐一个同学安利给我的 <a href="https://www.sourcetrail.com">sourcetrail</a> 这个工具。读代码，整体把握代码结构，静态索引之类的确实好用，就 MAC 版本的来看颜值也不错。在读这种大型代码的时候确实帮了不少忙。更关键的是，开源+免费。</p>
+
+<h3 id="other-references">Other references</h3>
+
+<p>这里有一些我参考的博客和 stack overflow 回答.</p>
+
+<ul>
+  <li><a href="https://mattwarren.org/2017/08/02/A-look-at-the-internals-of-boxing-in-the-CLR/">Internals of boxing</a></li>
+  <li><a href="https://alexandrnikitin.github.io/blog/dotnet-generics-under-the-hood/#net-memory-layout">.NET Memory Layout</a></li>
+  <li><a href="http://hubicka.blogspot.com/2014/02/devirtualization-in-c-part-4-analyzing.html">C++ Devirtualization</a></li>
+  <li><a href="https://stackoverflow.com/questions/5494807/how-clr-works-when-invoking-a-method-of-a-struct">Stackoverflow: method invocation on a struct</a></li>
+</ul>
+
+    </section>
+
+    <section id="pageNav" class="post-nav">
+        <div class="d-flex flex-column flex-md-row">
+            
+            <div>
+                <p>Previous post:</p>
+                <p><a href="/blog/2019/06/02/hello-world.html">Hello World</a></p>
+            </div>
+            
+
+            
+        </div>
+    </section>
+
+
+</article>
+
+
+        </div>
+
+        <footer class="bg-light site-footer d-flex flex-column align-items-center justify-content-center">
+            <div>
+                <p>KLBlog authored by ©
+                <a href="https://github.com/kaleid-liner" class="text-muted">kaleid-liner</a>
+                with <a href="https://getbootstrap.com" class="text-muted">Bootstrap</a></p>
+            </div>
+            <ul class="nav">
+                <li class="nav-item">
+                    <a class="nav-link text-dark" href="mailto:noob@mail.ustc.edu.cn" title="Email">
+                        <span class="fa-stack fa-lg">
+                            <i class="fas fa-circle fa-stack-2x"></i>
+                            <i class="fas fa-envelope fa-stack-1x fa-inverse"></i>
+                        </span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link text-dark" href="https://github.com/kaleid-liner" title="Follow on Github">
+                        <span class="fa-stack fa-lg">
+                            <i class="fas fa-circle fa-stack-2x"></i>
+                            <i class="fab fa-github fa-stack-1x fa-inverse"></i>
+                        </span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link text-dark" href="/feed.xml" title="Feed">
+                        <span class="fa-stack fa-lg">
+                            <i class="fas fa-circle fa-stack-2x"></i>
+                            <i class="fas fa-rss fa-stack-1x fa-inverse"></i>
+                        </span>
+                    </a>
+                </li>
+            </ul>
+        </footer>
+    </body>
+</html>
