@@ -327,10 +327,6 @@ Devirtualized virtual call to HelloWorld.B:Foo; now direct call to HelloWorld.D:
 
 <p>这里的特殊情况源于 C# 中，值类型可能会重写 <code class="highlighter-rouge">object</code> 中的方法，比如 <code class="highlighter-rouge">ToString</code>。在这种情况下，生成的方法表和平常的有所不同。我们看一下这个例子：</p>
 
-<blockquote>
-  <p>以下的测试样例和解释来自于这篇 post:  <a href="https://mattwarren.org/2017/08/02/A-look-at-the-internals-of-boxing-in-the-CLR/">Internals of boxing</a>. 为了这个 post 的完整性我仍是加了进去。如果觉得我讲的不清楚，建议看一下原篇.</p>
-</blockquote>
-
 <div class="language-c# highlighter-rouge"><div class="highlight"><pre class="highlight"><code><span class="k">public</span> <span class="k">struct</span> <span class="nc">MyStruct</span>
 <span class="p">{</span>
     <span class="k">public</span> <span class="kt">int</span> <span class="n">Value</span><span class="p">;</span>
@@ -432,7 +428,7 @@ this -&gt; | Field1               |
 <span class="p">}</span>
 </code></pre></div></div>
 
-<p><img src="/assets/img/posts/TwoClassesDevirt.jpg" alt="TwoClassedDevirt" /></p>
+<p><img src="/assets/img/posts/branchpred.jpg" alt="TwoClassedDevirt" /></p>
 
 <p>可以发现，当数组中基本都是 <code class="highlighter-rouge">B</code> 或 <code class="highlighter-rouge">D</code> 时，分支预测命中率很高，因此效率很高。但一半 <code class="highlighter-rouge">B</code> 或一半 <code class="highlighter-rouge">D</code> 时，分支预测很难命中，因此效率较低。</p>
 

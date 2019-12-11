@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.0.0">Jekyll</generator><link href="https://kaleid-liner.github.io/feed.xml" rel="self" type="application/atom+xml" /><link href="https://kaleid-liner.github.io/" rel="alternate" type="text/html" /><updated>2019-12-11T10:30:03+00:00</updated><id>https://kaleid-liner.github.io/feed.xml</id><title type="html">KLBlog</title><subtitle>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.</subtitle><entry><title type="html">.NET Core Devirtualization Under the Hood</title><link href="https://kaleid-liner.github.io/blog/2019/12/11/devirt.html" rel="alternate" type="text/html" title=".NET Core Devirtualization Under the Hood" /><published>2019-12-11T00:00:00+00:00</published><updated>2019-12-11T00:00:00+00:00</updated><id>https://kaleid-liner.github.io/blog/2019/12/11/devirt</id><content type="html" xml:base="https://kaleid-liner.github.io/blog/2019/12/11/devirt.html">&lt;blockquote&gt;
+<?xml version="1.0" encoding="utf-8"?><feed xmlns="http://www.w3.org/2005/Atom" ><generator uri="https://jekyllrb.com/" version="4.0.0">Jekyll</generator><link href="https://kaleid-liner.github.io/feed.xml" rel="self" type="application/atom+xml" /><link href="https://kaleid-liner.github.io/" rel="alternate" type="text/html" /><updated>2019-12-11T15:36:45+00:00</updated><id>https://kaleid-liner.github.io/feed.xml</id><title type="html">KLBlog</title><subtitle>Write an awesome description for your new site here. You can edit this line in _config.yml. It will appear in your document head meta (for Google search results) and in your feed.xml site description.</subtitle><entry><title type="html">.NET Core Devirtualization Under the Hood</title><link href="https://kaleid-liner.github.io/blog/2019/12/11/devirt.html" rel="alternate" type="text/html" title=".NET Core Devirtualization Under the Hood" /><published>2019-12-11T00:00:00+00:00</published><updated>2019-12-11T00:00:00+00:00</updated><id>https://kaleid-liner.github.io/blog/2019/12/11/devirt</id><content type="html" xml:base="https://kaleid-liner.github.io/blog/2019/12/11/devirt.html">&lt;blockquote&gt;
   &lt;p&gt;This post is based on a research report of one of my ongoing project. So it was written in Chinese. English version may be uploaded one day?&lt;/p&gt;
 &lt;/blockquote&gt;
 
@@ -230,10 +230,6 @@ Devirtualized virtual call to HelloWorld.B:Foo; now direct call to HelloWorld.D:
 
 &lt;p&gt;这里的特殊情况源于 C# 中，值类型可能会重写 &lt;code class=&quot;highlighter-rouge&quot;&gt;object&lt;/code&gt; 中的方法，比如 &lt;code class=&quot;highlighter-rouge&quot;&gt;ToString&lt;/code&gt;。在这种情况下，生成的方法表和平常的有所不同。我们看一下这个例子：&lt;/p&gt;
 
-&lt;blockquote&gt;
-  &lt;p&gt;以下的测试样例和解释来自于这篇 post:  &lt;a href=&quot;https://mattwarren.org/2017/08/02/A-look-at-the-internals-of-boxing-in-the-CLR/&quot;&gt;Internals of boxing&lt;/a&gt;. 为了这个 post 的完整性我仍是加了进去。如果觉得我讲的不清楚，建议看一下原篇.&lt;/p&gt;
-&lt;/blockquote&gt;
-
 &lt;div class=&quot;language-c# highlighter-rouge&quot;&gt;&lt;div class=&quot;highlight&quot;&gt;&lt;pre class=&quot;highlight&quot;&gt;&lt;code&gt;&lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;k&quot;&gt;struct&lt;/span&gt; &lt;span class=&quot;nc&quot;&gt;MyStruct&lt;/span&gt;
 &lt;span class=&quot;p&quot;&gt;{&lt;/span&gt;
     &lt;span class=&quot;k&quot;&gt;public&lt;/span&gt; &lt;span class=&quot;kt&quot;&gt;int&lt;/span&gt; &lt;span class=&quot;n&quot;&gt;Value&lt;/span&gt;&lt;span class=&quot;p&quot;&gt;;&lt;/span&gt;
@@ -335,7 +331,7 @@ this -&amp;gt; | Field1               |
 &lt;span class=&quot;p&quot;&gt;}&lt;/span&gt;
 &lt;/code&gt;&lt;/pre&gt;&lt;/div&gt;&lt;/div&gt;
 
-&lt;p&gt;&lt;img src=&quot;/assets/img/posts/TwoClassesDevirt.jpg&quot; alt=&quot;TwoClassedDevirt&quot; /&gt;&lt;/p&gt;
+&lt;p&gt;&lt;img src=&quot;/assets/img/posts/branchpred.jpg&quot; alt=&quot;TwoClassedDevirt&quot; /&gt;&lt;/p&gt;
 
 &lt;p&gt;可以发现，当数组中基本都是 &lt;code class=&quot;highlighter-rouge&quot;&gt;B&lt;/code&gt; 或 &lt;code class=&quot;highlighter-rouge&quot;&gt;D&lt;/code&gt; 时，分支预测命中率很高，因此效率很高。但一半 &lt;code class=&quot;highlighter-rouge&quot;&gt;B&lt;/code&gt; 或一半 &lt;code class=&quot;highlighter-rouge&quot;&gt;D&lt;/code&gt; 时，分支预测很难命中，因此效率较低。&lt;/p&gt;
 
