@@ -1,6 +1,16 @@
 [
   
     {
+      "title"    : "一行代码摆脱 Python Debug 烦恼",
+      "category" : "",
+      "tags"     : "python, debug",
+      "url"      : "/blog/2021/07/07/python-debug.html",
+      "date"     : "Jul 07, 2021",
+      "excerpt"  : "import pdb; pdb.set_trace()\n\n\n另外，请大家真的不要在这样写代码了：\n\n\n\n（它浪费了我整整一个晚上去 de\n\n（如果没有上面那行代码，可能要两晚\n",
+      "read_time"  : "less than one minute"
+    } ,
+  
+    {
       "title"    : ".NET Core Devirtualization Under the Hood",
       "category" : "",
       "tags"     : "dotnet, devirtualization",
